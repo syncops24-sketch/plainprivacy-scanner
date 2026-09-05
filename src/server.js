@@ -25,8 +25,21 @@ app.use(helmet({
       frameAncestors: ["'none'"]
     }
   },
-  crossOriginResourcePolicy: { policy: 'same-site' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
+const allowedOrigins = new Set(env.allowedOrigins);
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  if (origin && allowedOrigins.has(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json({ limit: '8kb' }));
 app.use(express.static('public', { extensions: ['html'], maxAge: env.nodeEnv === 'production' ? '1h' : 0 }));
 
@@ -64,7 +77,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
 });
 
 const server = app.listen(env.port, () => {
-  console.log(`PlainPrivacy Scanner listening on http://localhost:${env.port}`);
+  console.log(`PlainPrivacy Scanner listening on port ${env.port}`);
 });
 
 async function shutdown(signal) {
