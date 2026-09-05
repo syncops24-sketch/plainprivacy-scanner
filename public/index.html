@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Free Privacy Compliance Scanner | PlainPrivacy</title>
+  <meta name="description" content="Free website privacy compliance scanner for consent banners, cookies, trackers, browser storage and common implementation issues.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://plainprivacy.org/privacy-scanner/">
+  <link rel="icon" type="image/png" href="/plainprivacy-icon.png">
+  <meta property="og:title" content="Free Privacy Compliance Scanner | PlainPrivacy">
+  <meta property="og:description" content="Run a free automated website privacy check for consent banners, cookies, trackers, browser storage and common implementation issues.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://plainprivacy.org/privacy-scanner/">
+  <meta property="og:site_name" content="PlainPrivacy">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "PlainPrivacy Free Privacy Compliance Scanner",
+    "url": "https://plainprivacy.org/privacy-scanner/",
+    "applicationCategory": "BusinessApplication",
+    "operatingSystem": "Web",
+    "isAccessibleForFree": true,
+    "description": "Free automated website privacy checks for consent interfaces, cookies, trackers, browser storage and common implementation issues. The scanner does not provide legal advice or determine legal compliance.",
+    "provider": {
+      "@type": "Organization",
+      "name": "PlainPrivacy",
+      "url": "https://plainprivacy.org/"
+    }
+  }
+  </script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="https://plainprivacy.org" aria-label="PlainPrivacy home">
+      <img class="brand-logo" src="/plainprivacy-icon.png" alt="" width="34" height="34"><span>PlainPrivacy</span>
+    </a>
+    <span class="badge">Scanner v1.0.7</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="eyebrow">FREE AUTOMATED WEBSITE CHECK</div>
+      <h1>Free Privacy <span>Compliance Scanner</span></h1>
+      <p class="lede">Check your website for common privacy and consent implementation issues, including cookies, trackers, consent controls and pre-interaction activity. Technical scan only, not legal advice or a compliance determination.</p>
+      <p class="scope-note"><strong>Technical implementation check</strong> · not a legal compliance certification.</p>
+
+      <form id="scan-form" class="scan-box">
+        <label for="url">Website URL</label>
+        <div class="input-row">
+          <input id="url" name="url" type="text" inputmode="url" autocomplete="url" placeholder="example.com" maxlength="2048" required>
+          <button id="scan-button" type="submit">Run free scan</button>
+        </div>
+        <p class="fineprint">Public HTTP/HTTPS websites only. The scanner observes the initial page state and does not interact with consent controls.</p>
+      </form>
+
+      <div id="progress" class="progress hidden" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
+        <div>
+          <strong id="progress-title">Opening a clean browser session…</strong>
+          <p id="progress-detail">Recording initial technical signals without interacting with consent controls.</p>
+        </div>
+      </div>
+      <div id="error" class="error hidden" role="alert"></div>
+    </section>
+
+    <section id="results" class="results hidden" aria-live="polite">
+      <div class="score-panel">
+        <div>
+          <div class="eyebrow">OBSERVED TECHNICAL PRIVACY SCORE</div>
+          <div class="score-line"><span id="score">0</span><span class="score-total">/100</span></div>
+          <h2 id="score-label"></h2>
+          <p id="score-explanation"></p>
+          <p id="score-coverage" class="coverage-note"></p>
+          <p id="scan-location" class="coverage-note"></p>
+        </div>
+        <div class="summary-grid">
+          <div><strong id="passed-count">0</strong><span>Observed passes</span></div>
+          <div><strong id="concern-count">0</strong><span>Potential concerns</span></div>
+          <div><strong id="observation-count">0</strong><span>Technical observations</span></div>
+          <div><strong id="manual-count">0</strong><span>Manual checks</span></div>
+        </div>
+      </div>
+
+      <div id="concerns-section" class="finding-section">
+        <div class="section-title"><span class="dot concern"></span><h2>Potential concerns</h2></div>
+        <div id="concerns-list" class="cards"></div>
+      </div>
+
+      <div id="passed-section" class="finding-section">
+        <div class="section-title"><span class="dot passed"></span><h2>Passed checks</h2></div>
+        <div id="passed-list" class="cards"></div>
+      </div>
+
+      <div id="observations-section" class="finding-section">
+        <div class="section-title"><span class="dot observation"></span><h2>Detected technologies & observations</h2></div>
+        <div id="observations-list" class="cards"></div>
+      </div>
+
+      <div id="manual-section" class="finding-section">
+        <div class="section-title"><span class="dot manual"></span><h2>Needs manual verification</h2></div>
+        <div id="manual-list" class="cards"></div>
+      </div>
+
+      <section class="evidence-panel">
+        <h2>Scan evidence</h2>
+        <div id="evidence" class="evidence-grid"></div>
+        <div id="evidence-details" class="evidence-details"></div>
+      </section>
+
+      <section class="limitations">
+        <div>
+          <div class="eyebrow">AUTOMATED SCAN ONLY</div>
+          <h2>What the automated scanner cannot reliably determine</h2>
+          <ul id="limitations-list"></ul>
+        </div>
+        <div class="disclaimer" id="disclaimer"></div>
+      </section>
+
+      <section class="privacy-note">
+        <div class="eyebrow">PRIVACY BY DESIGN</div>
+        <h2>What happens to the URL you scan?</h2>
+        <p>The scanner does not intentionally persist scan results or require an email address. The submitted URL is processed to run the scan, while normal hosting, security and rate-limiting infrastructure may temporarily process technical request data such as IP addresses.</p>
+      </section>
+
+      <section class="cta">
+        <div>
+          <div class="eyebrow">PLAINPRIVACY MANUAL REVIEW</div>
+          <h2>Need the implementation verified properly?</h2>
+          <p>PlainPrivacy can manually test consent behavior, tracker blocking, region-specific flows, withdrawal, and implementation details that an automated scan cannot reliably verify.</p>
+        </div>
+        <a class="cta-button" href="https://plainprivacy.org/#contact">Request a manual technical review</a>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>PlainPrivacy</strong> · Technical privacy implementation</p>
+    <p>This scanner performs automated technical checks only. It does not provide legal advice and does not determine compliance with any privacy law.</p>
+  </footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>

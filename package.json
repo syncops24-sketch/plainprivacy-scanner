@@ -1,0 +1,23 @@
+{
+  "name": "plainprivacy-scanner-v1",
+  "version": "1.0.7",
+  "private": true,
+  "description": "PlainPrivacy automated technical privacy implementation scanner",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "node --env-file=.env --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test",
+    "playwright:install": "playwright install --with-deps chromium"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "express-rate-limit": "8.7.0",
+    "helmet": "8.1.0",
+    "playwright": "1.62.1",
+    "tldts": "^7.0.0"
+  }
+}
