@@ -9,6 +9,16 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
+const SCANNER_VERSION = '1.0.9';
+
+function logScanEvent(payload) {
+  console.log(JSON.stringify({
+    source: 'plainprivacy-scanner',
+    scannerVersion: SCANNER_VERSION,
+    timestamp: new Date().toISOString(),
+    ...payload
+  }));
+}
 
 if (env.trustProxy > 0) app.set('trust proxy', env.trustProxy);
 app.disable('x-powered-by');
@@ -58,15 +68,46 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
     return res.status(503).json({ error: 'The scanner is currently at capacity. Please try again shortly.' });
   }
 
+  const startedAt = Date.now();
+  let hostname = null;
+
   try {
     const submitted = req.body?.url;
     const validated = await validatePublicUrl(submitted);
+    hostname = validated.url.hostname.toLowerCase();
+
+    logScanEvent({ event: 'scanner_started', hostname });
+
     const raw = await scanPage(validated.url.toString());
     const report = createReport(raw);
+
+    logScanEvent({
+      event: 'scanner_completed',
+      hostname,
+      durationMs: Date.now() - startedAt,
+      score: report.score ?? null,
+      concerns: report.summary?.concerns ?? null
+    });
+
     return res.json(report);
   } catch (error) {
-    if (error instanceof UnsafeUrlError) return res.status(400).json({ error: error.message });
-    console.error('[scan-error]', error);
+    if (error instanceof UnsafeUrlError) {
+      logScanEvent({
+        event: 'scanner_rejected',
+        durationMs: Date.now() - startedAt,
+        reason: 'unsafe_or_invalid_url'
+      });
+      return res.status(400).json({ error: error.message });
+    }
+
+    const reason = error?.message === 'SCAN_TIMEOUT' ? 'timeout' : 'scan_failed';
+    logScanEvent({
+      event: 'scanner_failed',
+      ...(hostname ? { hostname } : {}),
+      durationMs: Date.now() - startedAt,
+      reason
+    });
+
     const message = error?.message === 'SCAN_TIMEOUT'
       ? 'The site took too long to scan.'
       : 'The automated scan could not complete for this site. It may block automated browsers, load too slowly, or require manual verification.';

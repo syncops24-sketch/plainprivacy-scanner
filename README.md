@@ -305,3 +305,17 @@ Scanner v1.0.7 separates **tracker library/configuration loads** from recognizab
 Consentmo detection no longer treats the generic `gdpr-backpack` substring as sufficient vendor evidence. The detector now requires a Consentmo-specific signal, a Consentmo-specific Shopify extension asset path, or a vendor-specific Consentmo DOM signature. This prevents unrelated sites from being labeled as using Consentmo merely because a generic backpack/GDPR string appears in loaded resources.
 
 Explanatory report copy also avoids hard-coded scanner version numbers where the statement is version-independent, reducing stale-version text after future releases.
+
+
+## Minimal scanner usage logging
+
+Scanner v1.0.9 writes privacy-minimized structured JSON events to the application log for each validated scan. The logged fields are limited to the normalized hostname, timestamp, scanner version, completion status, duration, and (for completed scans) the technical score and concern count. It does not intentionally log the full submitted URL, query string, scan evidence, or visitor IP address in these scanner analytics events.
+
+Typical Render log entries look like:
+
+```json
+{"source":"plainprivacy-scanner","scannerVersion":"1.0.9","timestamp":"2026-09-06T09:00:00.000Z","event":"scanner_started","hostname":"example.com"}
+{"source":"plainprivacy-scanner","scannerVersion":"1.0.9","timestamp":"2026-09-06T09:00:09.250Z","event":"scanner_completed","hostname":"example.com","durationMs":9250,"score":83,"concerns":0}
+```
+
+Use Render's Logs view and filter for `plainprivacy-scanner` or `scanner_completed` to review scanner usage. Render controls log retention, so this is operational tracking rather than a permanent analytics database.
