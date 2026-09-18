@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.0.9';
+const SCANNER_VERSION = '1.1.0';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -18,6 +18,27 @@ function logScanEvent(payload) {
     timestamp: new Date().toISOString(),
     ...payload
   }));
+}
+
+
+function cleanText(value, max = 120) {
+  if (typeof value !== 'string') return null;
+  const cleaned = value.trim().replace(/[\u0000-\u001F\u007F]/g, '').slice(0, max);
+  return cleaned || null;
+}
+
+function cleanPath(value) {
+  const cleaned = cleanText(value, 180);
+  if (!cleaned || !cleaned.startsWith('/')) return '/';
+  return cleaned.split('?')[0].split('#')[0] || '/';
+}
+
+function cleanHostname(value) {
+  const cleaned = cleanText(value, 253)?.toLowerCase();
+  if (!cleaned || !/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(cleaned)) {
+    return null;
+  }
+  return cleaned;
 }
 
 if (env.trustProxy > 0) app.set('trust proxy', env.trustProxy);
@@ -61,7 +82,38 @@ const scanLimiter = rateLimit({
   message: { error: 'Too many scans from this address. Please try again later.' }
 });
 
+
+const telemetryLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 240,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many telemetry events.' }
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+
+app.post('/api/visit', telemetryLimiter, (req, res) => {
+  const page = cleanPath(req.body?.page);
+  const referrerHost = cleanHostname(req.body?.referrerHost) || 'direct_or_unknown';
+  const utmSource = cleanText(req.body?.utmSource, 80);
+  const utmMedium = cleanText(req.body?.utmMedium, 80);
+  const utmCampaign = cleanText(req.body?.utmCampaign, 120);
+  const referral = cleanText(req.body?.ref, 80);
+
+  logScanEvent({
+    event: 'site_page_view',
+    page,
+    referrerHost,
+    ...(utmSource ? { utmSource } : {}),
+    ...(utmMedium ? { utmMedium } : {}),
+    ...(utmCampaign ? { utmCampaign } : {}),
+    ...(referral ? { ref: referral } : {})
+  });
+
+  return res.status(204).end();
+});
 
 app.post('/api/scan', scanLimiter, async (req, res) => {
   if (!semaphore.tryAcquire()) {

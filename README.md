@@ -319,3 +319,16 @@ Typical Render log entries look like:
 ```
 
 Use Render's Logs view and filter for `plainprivacy-scanner` or `scanner_completed` to review scanner usage. Render controls log retention, so this is operational tracking rather than a permanent analytics database.
+
+
+## Privacy-minimized page-view telemetry (v1.1.0)
+
+`POST /api/visit` accepts a small operational page-view payload from `plainprivacy.org` and logs a structured `site_page_view` event. The event can include the page path, referring hostname, UTM source/medium/campaign, and an optional `ref` value. The endpoint does not intentionally store cookies, persistent browser identifiers, the full referring URL, or referrer query strings. The website frontend sends these events with `credentials: omit` and `referrerPolicy: no-referrer`.
+
+Example log event:
+
+```json
+{"source":"plainprivacy-scanner","scannerVersion":"1.1.0","timestamp":"2026-09-18T18:00:00.000Z","event":"site_page_view","page":"/privacy-scanner/","referrerHost":"chatgpt.com","utmSource":"chatgpt","utmMedium":"referral","utmCampaign":"scanner"}
+```
+
+The event represents a page load, not a unique visitor. No client-side cookie or persistent identifier is used to deduplicate visitors.
