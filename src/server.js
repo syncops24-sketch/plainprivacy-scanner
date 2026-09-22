@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.1.0';
+const SCANNER_VERSION = '1.1.2';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -153,11 +153,16 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
     }
 
     const reason = error?.message === 'SCAN_TIMEOUT' ? 'timeout' : 'scan_failed';
+    const errorName = cleanText(error?.name || 'Error', 80) || 'Error';
+    const errorMessage = cleanText(error?.message || 'Unknown scanner error', 500) || 'Unknown scanner error';
+
     logScanEvent({
       event: 'scanner_failed',
       ...(hostname ? { hostname } : {}),
       durationMs: Date.now() - startedAt,
-      reason
+      reason,
+      errorName,
+      errorMessage
     });
 
     const message = error?.message === 'SCAN_TIMEOUT'
