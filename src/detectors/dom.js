@@ -45,10 +45,22 @@ export async function inspectDom(page) {
 
     const bannerElements = candidateElements.filter((el) => {
       const marker = `${text(el)} ${el.id || ''} ${String(el.className || '')}`;
-      if (!regs.bannerMarker.test(marker)) return false;
-      const controlCount = [...el.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]')]
-        .filter(isVisible).length;
-      return regs.bannerText.test(marker) && (controlCount > 0 || /dialog|banner|popup|modal|cmp/i.test(marker));
+      if (!regs.bannerMarker.test(marker) || !regs.bannerText.test(marker)) return false;
+
+      const visibleControls = [...el.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]')]
+        .filter(isVisible)
+        .map((control) => text(control))
+        .filter(Boolean);
+
+      // Generic cookie/privacy wording or a CMP/vendor signature alone is not
+      // enough to claim a visible consent interface. Require an explicit
+      // accept/reject decision control inside the same visible region.
+      // This favors precision over recall; unusual custom wording remains manual.
+      const hasPrimaryConsentAction = visibleControls.some((controlText) =>
+        regs.accept.test(controlText) || regs.reject.test(controlText)
+      );
+
+      return hasPrimaryConsentAction;
     });
 
     const isInsideBanner = (el) => bannerElements.some((banner) => banner === el || banner.contains(el));
