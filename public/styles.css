@@ -102,3 +102,8 @@ footer p { margin:4px 0; }
 
 .scope-note { margin: 12px 0 0; color: #aebed1; font-size: 0.92rem; }
 .scope-note strong { color: #ffffff; }
+
+.location-row { margin-top:14px; display:grid; gap:7px; max-width:320px; }
+.location-row label { margin:0; font-size:.9rem; color:var(--muted); }
+.location-row select { width:100%; min-height:46px; border-radius:11px; border:1px solid var(--border); background:#091525; padding:0 13px; color:var(--white); font:inherit; outline:none; }
+.location-row select:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(26,107,245,.18); }
