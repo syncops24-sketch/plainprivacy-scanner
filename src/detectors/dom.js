@@ -39,33 +39,65 @@ export async function inspectDom(page) {
       }
     }
 
-    const candidateElements = allElements.filter((el) =>
-      el.matches?.('div, section, aside, dialog, [role="dialog"], [role="alertdialog"], form') && isVisible(el)
+    const controlElements = allElements
+      .filter((el) => el.matches?.('button, a, input[type="button"], input[type="submit"], [role="button"], [tabindex]') && isVisible(el))
+      .filter((el) => text(el));
+
+    const ancestorChain = (el, maxDepth = 10) => {
+      const chain = [];
+      let current = el;
+      for (let depth = 0; depth < maxDepth && current; depth += 1) {
+        let parent = current.parentElement;
+        if (!parent) {
+          const root = current.getRootNode?.();
+          parent = root && root.host instanceof Element ? root.host : null;
+        }
+        if (!parent) break;
+        if (!['HTML', 'BODY', 'MAIN'].includes(parent.tagName)) chain.push(parent);
+        current = parent;
+      }
+      return chain;
+    };
+
+    const looksLikeConsentRegion = (el) => {
+      if (!el || !isVisible(el)) return false;
+      const marker = `${text(el)} ${el.id || ''} ${String(el.className || '')}`;
+      return regs.bannerMarker.test(marker) && regs.bannerText.test(marker);
+    };
+
+    // Start with conventional visible consent containers.
+    const conventionalCandidates = allElements.filter((el) =>
+      el.matches?.('div, section, aside, dialog, [role="dialog"], [role="alertdialog"], form') &&
+      looksLikeConsentRegion(el)
     );
 
-    const bannerElements = candidateElements.filter((el) => {
-      const marker = `${text(el)} ${el.id || ''} ${String(el.className || '')}`;
-      if (!regs.bannerMarker.test(marker) || !regs.bannerText.test(marker)) return false;
+    // Also anchor detection around explicit consent decision controls and walk
+    // upward. This catches CMPs that use custom elements or unusual wrappers.
+    const controlAnchoredCandidates = [];
+    for (const control of controlElements) {
+      const controlText = text(control);
+      const isConsentAction = regs.accept.test(controlText) || regs.reject.test(controlText) || regs.preferences.test(controlText);
+      if (!isConsentAction) continue;
+      const region = ancestorChain(control).find(looksLikeConsentRegion);
+      if (region) controlAnchoredCandidates.push(region);
+    }
 
-      const visibleControls = [...el.querySelectorAll('button, a, input[type="button"], input[type="submit"], [role="button"]')]
-        .filter(isVisible)
-        .map((control) => text(control))
-        .filter(Boolean);
+    const candidates = [...new Set([...conventionalCandidates, ...controlAnchoredCandidates])];
 
-      // Generic cookie/privacy wording or a CMP/vendor signature alone is not
-      // enough to claim a visible consent interface. Require an explicit
-      // accept/reject decision control inside the same visible region.
-      // This favors precision over recall; unusual custom wording remains manual.
-      const hasPrimaryConsentAction = visibleControls.some((controlText) =>
-        regs.accept.test(controlText) || regs.reject.test(controlText)
-      );
+    const bannerElements = candidates.filter((el) => {
+      const descendantControls = controlElements.filter((control) => el === control || el.contains(control));
+      const labels = descendantControls.map((control) => text(control));
+      const hasAccept = labels.some((value) => regs.accept.test(value));
+      const hasReject = labels.some((value) => regs.reject.test(value));
+      const hasPreferences = labels.some((value) => regs.preferences.test(value));
 
-      return hasPrimaryConsentAction;
+      // Require a strong consent-control pattern to avoid the earlier false
+      // positives from generic privacy/cookie content.
+      return (hasAccept && hasReject) || (hasAccept && hasPreferences) || (hasReject && hasPreferences);
     });
 
     const isInsideBanner = (el) => bannerElements.some((banner) => banner === el || banner.contains(el));
-    const controls = allElements
-      .filter((el) => el.matches?.('button, a, input[type="button"], input[type="submit"], [role="button"]') && isVisible(el))
+    const controls = controlElements
       .map((el) => ({
         text: text(el), id: el.id || '', cls: String(el.className || '').slice(0, 200), href: el.href || '', insideBanner: isInsideBanner(el)
       }))
@@ -95,7 +127,12 @@ export async function inspectDom(page) {
       bannerCandidateCount: bannerElements.length,
       htmlMarkers,
       bodyText,
-      shadowDomInspected: roots.length > 1
+      shadowDomInspected: roots.length > 1,
+      visibleControlCount: controlElements.length,
+      consentLikeControlTexts: controlElements
+        .map((el) => text(el))
+        .filter((value) => regs.accept.test(value) || regs.reject.test(value) || regs.preferences.test(value))
+        .slice(0, 20)
     };
   }, Object.fromEntries(Object.entries(DOM_REGEX).map(([k, re]) => [k, re.source])));
 }
