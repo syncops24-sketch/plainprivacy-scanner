@@ -15,7 +15,11 @@ export const env = Object.freeze({
   maxConcurrentScans: int('MAX_CONCURRENT_SCANS', 2),
   rateLimitWindowMs: int('RATE_LIMIT_WINDOW_MS', 15 * 60_000),
   rateLimitMax: int('RATE_LIMIT_MAX', 10),
-  scanLocation: process.env.SCAN_LOCATION || 'Server region not configured',
+  scanLocation: process.env.SCAN_LOCATION || 'Oregon, USA',
+  webshareHost: process.env.WEBSHARE_HOST || '',
+  websharePort: process.env.WEBSHARE_PORT || '',
+  webshareUsernameDe: process.env.WEBSHARE_USERNAME_DE || '',
+  websharePassword: process.env.WEBSHARE_PASSWORD || '',
   userAgent: process.env.USER_AGENT || '',
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://plainprivacy.org,https://www.plainprivacy.org')
     .split(',').map((value) => value.trim()).filter(Boolean)
