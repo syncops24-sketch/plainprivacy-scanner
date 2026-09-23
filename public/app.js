@@ -19,9 +19,25 @@ function escapeHtml(value) {
 function renderCards(id, items, group) {
   const container = $(id);
   if (!items.length) {
-    container.innerHTML = '<article class="card"><p class="why">No findings in this group for this scan.</p></article>';
+    container.innerHTML = '<div class="empty-state">No findings in this group for this scan.</div>';
     return;
   }
+
+  if (group === 'observation') {
+    container.innerHTML = items.map((item) => `
+      <details class="observation-row">
+        <summary>
+          <span class="observation-title">${escapeHtml(item.title)}</span>
+          <span class="observation-meta">${escapeHtml(item.confidence)} confidence</span>
+        </summary>
+        <div class="observation-body">
+          <div><span class="label">Detected</span><p class="detected">${escapeHtml(item.detected)}</p></div>
+          <div><span class="label">Why it matters</span><p class="why">${escapeHtml(item.why)}</p></div>
+        </div>
+      </details>`).join('');
+    return;
+  }
+
   container.innerHTML = items.map((item) => `
     <article class="card">
       <div class="card-head"><h3>${escapeHtml(item.title)}</h3><span class="confidence">${group === 'manual' ? 'Manual verification' : `${escapeHtml(item.confidence)} confidence`}</span></div>
