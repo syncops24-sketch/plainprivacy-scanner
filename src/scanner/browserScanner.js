@@ -29,10 +29,24 @@ export async function closeBrowser() {
   }
 }
 
-export async function scanPage(inputUrl) {
+export async function scanPage(inputUrl, options = {}) {
   const initial = await validatePublicUrl(inputUrl);
+  const location = options.location === 'de' ? 'de' : 'us-or';
+  const proxy = location === 'de'
+    ? {
+        server: `http://${env.webshareHost}:${env.websharePort}`,
+        username: env.webshareUsernameDe,
+        password: env.websharePassword
+      }
+    : null;
+
+  if (location === 'de' && (!env.webshareHost || !env.websharePort || !env.webshareUsernameDe || !env.websharePassword)) {
+    throw new Error('GERMANY_PROXY_NOT_CONFIGURED');
+  }
+
   const browser = await getBrowser();
   const context = await browser.newContext({
+    ...(proxy ? { proxy } : {}),
     ...(env.userAgent ? { userAgent: env.userAgent } : {}),
     javaScriptEnabled: true,
     ignoreHTTPSErrors: false,
@@ -167,7 +181,7 @@ export async function scanPage(inputUrl) {
       blockedRequests: blocked,
       redirectCount: chain.length - 1,
       scannedAt: new Date().toISOString(),
-      scanLocation: env.scanLocation
+      scanLocation: location === 'de' ? 'Germany' : env.scanLocation
     };
   } finally {
     clearTimeout(scanTimer);
