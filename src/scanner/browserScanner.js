@@ -65,19 +65,31 @@ async function inspectAllFrames(page) {
   };
 }
 
+const SCAN_LOCATIONS = Object.freeze({
+  'us-or': { label: 'Oregon, USA', username: null },
+  de: { label: 'Germany', username: () => env.webshareUsernameDe },
+  'us-ca': { label: 'California, USA', username: () => env.webshareUsernameUsCa },
+  'us-va': { label: 'Virginia, USA', username: () => env.webshareUsernameUsVa },
+  'us-ny': { label: 'New York, USA', username: () => env.webshareUsernameUsNy },
+  ca: { label: 'Canada', username: () => env.webshareUsernameCanada },
+  br: { label: 'Brazil', username: () => env.webshareUsernameBr }
+});
+
 export async function scanPage(inputUrl, options = {}) {
   const initial = await validatePublicUrl(inputUrl);
-  const location = options.location === 'de' ? 'de' : 'us-or';
-  const proxy = location === 'de'
-    ? {
+  const location = Object.hasOwn(SCAN_LOCATIONS, options.location) ? options.location : 'us-or';
+  const locationConfig = SCAN_LOCATIONS[location];
+  const proxyUsername = locationConfig.username?.() || '';
+  const proxy = location === 'us-or'
+    ? null
+    : {
         server: `http://${env.webshareHost}:${env.websharePort}`,
-        username: env.webshareUsernameDe,
+        username: proxyUsername,
         password: env.websharePassword
-      }
-    : null;
+      };
 
-  if (location === 'de' && (!env.webshareHost || !env.websharePort || !env.webshareUsernameDe || !env.websharePassword)) {
-    throw new Error('GERMANY_PROXY_NOT_CONFIGURED');
+  if (location !== 'us-or' && (!env.webshareHost || !env.websharePort || !proxyUsername || !env.websharePassword)) {
+    throw new Error('REGIONAL_PROXY_NOT_CONFIGURED');
   }
 
   const browser = await getBrowser();
@@ -224,7 +236,7 @@ export async function scanPage(inputUrl, options = {}) {
       blockedRequests: blocked,
       redirectCount: chain.length - 1,
       scannedAt: new Date().toISOString(),
-      scanLocation: location === 'de' ? 'Germany' : env.scanLocation
+      scanLocation: location === 'us-or' ? env.scanLocation : locationConfig.label
     };
   } finally {
     clearTimeout(scanTimer);

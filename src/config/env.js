@@ -19,6 +19,11 @@ export const env = Object.freeze({
   webshareHost: process.env.WEBSHARE_HOST || '',
   websharePort: process.env.WEBSHARE_PORT || '',
   webshareUsernameDe: process.env.WEBSHARE_USERNAME_DE || '',
+  webshareUsernameUsCa: process.env.WEBSHARE_USERNAME_US_CA || '',
+  webshareUsernameUsVa: process.env.WEBSHARE_USERNAME_US_VA || '',
+  webshareUsernameUsNy: process.env.WEBSHARE_USERNAME_US_NY || '',
+  webshareUsernameCanada: process.env.WEBSHARE_USERNAME_CA_COUNTRY || '',
+  webshareUsernameBr: process.env.WEBSHARE_USERNAME_BR || '',
   websharePassword: process.env.WEBSHARE_PASSWORD || '',
   userAgent: process.env.USER_AGENT || '',
   allowedOrigins: (process.env.ALLOWED_ORIGINS || 'https://plainprivacy.org,https://www.plainprivacy.org')

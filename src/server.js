@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.1.5';
+const SCANNER_VERSION = '1.2.0';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -128,7 +128,8 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
     const validated = await validatePublicUrl(submitted);
     hostname = validated.url.hostname.toLowerCase();
 
-    const requestedLocation = req.body?.location === 'de' ? 'de' : 'us-or';
+    const allowedLocations = new Set(['us-or', 'de', 'us-ca', 'us-va', 'us-ny', 'ca', 'br']);
+    const requestedLocation = allowedLocations.has(req.body?.location) ? req.body.location : 'us-or';
     logScanEvent({ event: 'scanner_started', hostname, scanLocation: requestedLocation });
 
     const raw = await scanPage(validated.url.toString(), { location: requestedLocation });
