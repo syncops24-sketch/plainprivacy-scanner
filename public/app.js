@@ -95,7 +95,7 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch('/api/scan', {
       method:'POST',
       headers:{ 'content-type':'application/json' },
-      body:JSON.stringify({ url:$('url').value })
+      body:JSON.stringify({ url:$('url').value, location:$('scan-location-select')?.value || 'us-or' })
     });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(body.error || 'The scan could not be completed.');
