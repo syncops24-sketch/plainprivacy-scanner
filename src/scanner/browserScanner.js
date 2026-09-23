@@ -29,6 +29,42 @@ export async function closeBrowser() {
   }
 }
 
+async function inspectAllFrames(page) {
+  const snapshots = [];
+  for (const frame of page.frames()) {
+    try {
+      snapshots.push({ frame, dom: await inspectDom(frame) });
+    } catch {}
+  }
+
+  if (!snapshots.length) return inspectDom(page);
+
+  const mainFrame = page.mainFrame();
+  const main = snapshots.find((item) => item.frame === mainFrame)?.dom || snapshots[0].dom;
+  const pickControl = (key) => snapshots.map((item) => item.dom.controls?.[key]).find(Boolean) || null;
+  const pickPolicy = (key) => snapshots.map((item) => item.dom.policies?.[key]).find(Boolean) || null;
+
+  return {
+    title: main.title,
+    controls: {
+      accept: pickControl('accept'),
+      reject: pickControl('reject'),
+      preferences: pickControl('preferences'),
+      settingsEntry: pickControl('settingsEntry')
+    },
+    policies: {
+      privacy: pickPolicy('privacy'),
+      cookie: pickPolicy('cookie')
+    },
+    bannerDetected: snapshots.some((item) => item.dom.bannerDetected),
+    bannerCandidateCount: snapshots.reduce((sum, item) => sum + (item.dom.bannerCandidateCount || 0), 0),
+    htmlMarkers: snapshots.map((item) => item.dom.htmlMarkers || '').join('\n').slice(0, 500000),
+    bodyText: snapshots.map((item) => item.dom.bodyText || '').join('\n').slice(0, 100000),
+    shadowDomInspected: snapshots.some((item) => item.dom.shadowDomInspected),
+    frameCountInspected: snapshots.length
+  };
+}
+
 export async function scanPage(inputUrl, options = {}) {
   const initial = await validatePublicUrl(inputUrl);
   const location = options.location === 'de' ? 'de' : 'us-or';
@@ -124,12 +160,19 @@ export async function scanPage(inputUrl, options = {}) {
 
     if (mainDocumentTooLarge) throw new Error('Main document exceeds the configured size limit.');
 
-    // Give client-rendered banners/tags a brief deterministic window to initialize.
-    await page.waitForTimeout(1800).catch(() => {});
+    // Give client-rendered CMPs time to initialize, then poll visible consent UI
+    // across the main document and any child frames. This improves detection for
+    // asynchronously rendered and iframe-based consent interfaces without clicking them.
+    await page.waitForTimeout(900).catch(() => {});
+    let dom = null;
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      dom = await inspectAllFrames(page);
+      if (dom.bannerDetected || dom.controls.accept || dom.controls.reject || dom.controls.preferences) break;
+      if (attempt < 5) await page.waitForTimeout(650).catch(() => {});
+    }
 
     const finalUrl = page.url();
     const final = await validatePublicUrl(finalUrl);
-    const dom = await inspectDom(page);
     const cookies = await context.cookies();
     const storage = await page.evaluate(() => ({
       localStorage: Object.keys(localStorage).map((key) => ({ key, valuePreview: String(localStorage.getItem(key) || '').slice(0, 120) })),
