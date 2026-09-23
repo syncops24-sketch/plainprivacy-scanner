@@ -103,8 +103,15 @@ export async function scanPage(inputUrl, options = {}) {
   });
 
   const page = await context.newPage();
+  const navigationTimeoutMs = location === 'us-or'
+    ? env.navigationTimeoutMs
+    : Math.max(env.navigationTimeoutMs, 20_000);
+  const scanTimeoutMs = location === 'us-or'
+    ? env.scanTimeoutMs
+    : Math.max(env.scanTimeoutMs, 35_000);
+
   page.setDefaultTimeout(4_000);
-  page.setDefaultNavigationTimeout(env.navigationTimeoutMs);
+  page.setDefaultNavigationTimeout(navigationTimeoutMs);
 
   const network = [];
   const blocked = [];
@@ -153,10 +160,10 @@ export async function scanPage(inputUrl, options = {}) {
   });
 
   const scanAbort = new AbortController();
-  const scanTimer = setTimeout(() => scanAbort.abort(), env.scanTimeoutMs);
+  const scanTimer = setTimeout(() => scanAbort.abort(), scanTimeoutMs);
 
   try {
-    const navPromise = page.goto(initial.url.toString(), { waitUntil: 'domcontentloaded', timeout: env.navigationTimeoutMs });
+    const navPromise = page.goto(initial.url.toString(), { waitUntil: 'domcontentloaded', timeout: navigationTimeoutMs });
     const abortPromise = new Promise((_, reject) => scanAbort.signal.addEventListener('abort', () => reject(new Error('SCAN_TIMEOUT')), { once: true }));
     const response = await Promise.race([navPromise, abortPromise]);
     if (!response) throw new Error('No response received from the target site.');

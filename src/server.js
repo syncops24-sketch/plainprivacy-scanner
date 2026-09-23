@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.2.0';
+const SCANNER_VERSION = '1.2.1';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -122,6 +122,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
 
   const startedAt = Date.now();
   let hostname = null;
+  let requestedLocation = 'us-or';
 
   try {
     const submitted = req.body?.url;
@@ -129,7 +130,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
     hostname = validated.url.hostname.toLowerCase();
 
     const allowedLocations = new Set(['us-or', 'de', 'us-ca', 'us-va', 'us-ny', 'ca', 'br']);
-    const requestedLocation = allowedLocations.has(req.body?.location) ? req.body.location : 'us-or';
+    requestedLocation = allowedLocations.has(req.body?.location) ? req.body.location : 'us-or';
     logScanEvent({ event: 'scanner_started', hostname, scanLocation: requestedLocation });
 
     const raw = await scanPage(validated.url.toString(), { location: requestedLocation });
@@ -162,6 +163,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
     logScanEvent({
       event: 'scanner_failed',
       ...(hostname ? { hostname } : {}),
+      scanLocation: requestedLocation,
       durationMs: Date.now() - startedAt,
       reason,
       errorName,
