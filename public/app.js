@@ -28,7 +28,7 @@ function renderCards(id, items, group) {
       <details class="observation-row">
         <summary>
           <span class="observation-title">${escapeHtml(item.title)}</span>
-          <span class="observation-meta">${escapeHtml(item.confidence)} confidence</span>
+          <span class="observation-meta">Detection confidence: ${escapeHtml(item.confidence)}</span>
         </summary>
         <div class="observation-body">
           <div><span class="label">Detected</span><p class="detected">${escapeHtml(item.detected)}</p></div>
@@ -39,8 +39,8 @@ function renderCards(id, items, group) {
   }
 
   container.innerHTML = items.map((item) => `
-    <article class="card">
-      <div class="card-head"><h3>${escapeHtml(item.title)}</h3><span class="confidence">${group === 'manual' ? 'Manual verification' : `${escapeHtml(item.confidence)} confidence`}</span></div>
+    <article class="card ${group === 'concern' ? 'card-concern' : group === 'passed' ? 'card-passed' : ''}">
+      <div class="card-head"><h3>${escapeHtml(item.title)}</h3><span class="confidence">${group === 'manual' ? 'Manual verification' : `Detection confidence: ${escapeHtml(item.confidence)}`}</span></div>
       <span class="label">What was detected</span>
       <p class="detected">${escapeHtml(item.detected)}</p>
       <span class="label">Why it matters technically</span>

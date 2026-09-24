@@ -124,3 +124,22 @@ footer p { margin:4px 0; }
   .observation-row summary { align-items:flex-start; }
   .observation-meta { white-space:normal; text-align:right; }
 }
+
+.card-concern {
+  border-color: rgba(226,75,74,.55);
+  background: linear-gradient(145deg, rgba(226,75,74,.14), rgba(16,35,61,.96));
+  box-shadow: inset 4px 0 0 rgba(226,75,74,.9);
+}
+.card-passed {
+  border-color: rgba(0,201,167,.45);
+  background: linear-gradient(145deg, rgba(0,201,167,.11), rgba(16,35,61,.96));
+  box-shadow: inset 4px 0 0 rgba(0,201,167,.85);
+}
+.card-concern .confidence {
+  border-color: rgba(226,75,74,.45);
+  color: #ffc4c4;
+}
+.card-passed .confidence {
+  border-color: rgba(0,201,167,.35);
+  color: #aef4e8;
+}
