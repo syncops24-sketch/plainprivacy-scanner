@@ -200,3 +200,39 @@ footer p { margin:4px 0; }
 .observation-row .confidence-icon {
   margin-left: auto;
 }
+
+
+/* compact-result-ui-fixes */
+.confidence {
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.card-head .confidence {
+  min-width: max-content;
+}
+
+.observation-row {
+  overflow: visible;
+  position: relative;
+}
+
+.observation-row summary {
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.observation-row[open] summary {
+  border-radius: 14px 14px 0 0;
+}
+
+.observation-row[open] .observation-body {
+  background: var(--panel);
+  border-radius: 0 0 14px 14px;
+}
+
+.observation-row .confidence-icon::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+  right: 0;
+}
