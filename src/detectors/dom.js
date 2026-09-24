@@ -142,28 +142,29 @@ export async function inspectDom(page) {
 
     const rootConsentClusters = [];
     for (const root of roots) {
+      // The document can contain unrelated consent-themed examples and footer
+      // links. Only a shadow root is a bounded fallback consent region.
+      if (!(root instanceof ShadowRoot)) continue;
       const controlsInRoot = uniqueControls.filter((control) => control.getRootNode?.() === root);
       const types = new Set(controlsInRoot.map((control) => actionType(ownText(control))).filter(Boolean));
       if (types.size < 2 || (!types.has('accept') && !types.has('reject'))) continue;
 
-      const rootText = root instanceof ShadowRoot
-        ? ((root.textContent || '') + ' ' + markerText(root.host))
-        : (document.body?.innerText || document.body?.textContent || '');
+      const rootText = (root.textContent || '') + ' ' + markerText(root.host);
 
       if (!regs.bannerText.test(rootText) && !regs.bannerMarker.test(rootText)) continue;
 
       rootConsentClusters.push({
         root,
-        host: root instanceof ShadowRoot ? root.host : document.body,
+        host: root.host,
         controls: controlsInRoot
       });
     }
 
     const looksLikeConsentRegion = (el) => {
       if (!el || !isVisible(el)) return false;
-      const marker = markerText(el);
-      const explicitMarker = regs.bannerMarker.test(marker);
-      const consentText = regs.bannerText.test(marker);
+      const structuralMarker = [el.tagName, el.id, typeof el.className === 'string' ? el.className : '', el.getAttribute?.('role'), el.getAttribute?.('aria-label')].join(' ');
+      const explicitMarker = regs.bannerMarker.test(structuralMarker);
+      const consentText = regs.bannerText.test(ownText(el));
       const role = el.getAttribute?.('role') || '';
       const tag = el.tagName?.toLowerCase() || '';
       const customConsentElement = /(?:cookie|consent|cmp|gdpr|privacy)/i.test(tag);
