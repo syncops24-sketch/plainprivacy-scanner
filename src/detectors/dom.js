@@ -236,6 +236,7 @@ export async function inspectDom(page) {
       id: el.id || '',
       cls: String(el.className || '').slice(0, 200),
       href: el.href || '',
+      semantic: el.matches?.('button, a, input, [role="button"], [role="menuitem"]') || false,
       insideBanner: isInsideBanner(el),
       action: actionType(ownText(el))
     }));
@@ -257,11 +258,13 @@ export async function inspectDom(page) {
       )
     ].join('\\n').slice(0, 500000);
 
-    const findBannerControl = (name) =>
-      controls.find((c) => c.insideBanner && c.action === name) || null;
+    const preferredControl = (matches) => controls
+      .filter(matches)
+      .sort((a, b) => Number(b.semantic) - Number(a.semantic) || a.text.length - b.text.length)[0] || null;
 
-    const findSettingsEntry = () =>
-      controls.find((c) => !c.insideBanner && regs.settings.test(c.text)) || null;
+    const findBannerControl = (name) => preferredControl((c) => c.insideBanner && c.action === name);
+
+    const findSettingsEntry = () => preferredControl((c) => !c.insideBanner && regs.settings.test(c.text));
 
     const policy = (name) => links.find((l) => regs[name].test(l.text + ' ' + l.href));
 
