@@ -31,9 +31,24 @@ export const CMP_PATTERNS = [
   },
   {
     name: 'Shopify Customer Privacy',
-    networkPatterns: [/cdn\.shopify\.com\/storefront\/(?:customer-privacy|privacy|consent)/i],
-    scriptPatterns: [/cdn\.shopify\.com\/storefront\/(?:customer-privacy|privacy|consent)/i],
-    domPatterns: [/Shopify\.customerPrivacy/i, /privacy-banner(?:-button)?["'\s=>]/i]
+    networkPatterns: [
+      /cdn\.shopify\.com\/storefront\/(?:customer-privacy|privacy|consent)/i,
+      /cdn\.shopify\.com\/storefront\/privacy/i
+    ],
+    scriptPatterns: [
+      /cdn\.shopify\.com\/storefront\/(?:customer-privacy|privacy|consent)/i,
+      /cdn\.shopify\.com\/storefront\/privacy/i
+    ],
+    domPatterns: [
+      /Shopify\.customerPrivacy/i,
+      /privacy-banner(?:-button)?["'\s=>]/i,
+      /id=["']shopify-pc__banner["']/i,
+      /class=["'][^"']*shopify-pc__banner(?:__|\b)/i,
+      /id=["']shopify-pc__prefs["']/i,
+      /class=["'][^"']*shopify-pc__prefs(?:__|\b)/i,
+      /shopify-pc__banner__dialog/i,
+      /shopify-pc__banner__wrapper/i
+    ]
   },
   {
     name: 'TrustArc',
