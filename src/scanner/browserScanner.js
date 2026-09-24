@@ -75,23 +75,15 @@ const SCAN_LOCATIONS = Object.freeze({
   br: { label: 'Brazil', username: () => env.webshareUsernameBr }
 });
 
-export async function scanPage(inputUrl, options = {}) {
-  const initial = await validatePublicUrl(inputUrl);
-  const location = Object.hasOwn(SCAN_LOCATIONS, options.location) ? options.location : 'us-or';
-  const locationConfig = SCAN_LOCATIONS[location];
-  const proxyUsername = locationConfig.username?.() || '';
-  const proxy = location === 'us-or'
-    ? null
-    : {
-        server: `http://${env.webshareHost}:${env.websharePort}`,
-        username: proxyUsername,
-        password: env.websharePassword
-      };
+function isTransientScanError(error) {
+  const message = String(error?.message || '');
+  return error?.name === 'TimeoutError'
+    || message === 'SCAN_TIMEOUT'
+    || /ERR_(?:TUNNEL_CONNECTION_FAILED|PROXY_CONNECTION_FAILED|CONNECTION_RESET|CONNECTION_CLOSED|TIMED_OUT)/i.test(message)
+    || /\b(?:ECONNRESET|ETIMEDOUT|EPIPE)\b/i.test(message);
+}
 
-  if (location !== 'us-or' && (!env.webshareHost || !env.websharePort || !proxyUsername || !env.websharePassword)) {
-    throw new Error('REGIONAL_PROXY_NOT_CONFIGURED');
-  }
-
+async function scanAttempt(initial, location, locationConfig, proxy) {
   const browser = await getBrowser();
   const context = await browser.newContext({
     ...(proxy ? { proxy } : {}),
@@ -103,12 +95,8 @@ export async function scanPage(inputUrl, options = {}) {
   });
 
   const page = await context.newPage();
-  const navigationTimeoutMs = location === 'us-or'
-    ? env.navigationTimeoutMs
-    : Math.max(env.navigationTimeoutMs, 20_000);
-  const scanTimeoutMs = location === 'us-or'
-    ? env.scanTimeoutMs
-    : Math.max(env.scanTimeoutMs, 35_000);
+  const navigationTimeoutMs = Math.max(env.navigationTimeoutMs, 20_000);
+  const scanTimeoutMs = Math.max(env.scanTimeoutMs, 35_000);
 
   page.setDefaultTimeout(4_000);
   page.setDefaultNavigationTimeout(navigationTimeoutMs);
@@ -249,4 +237,36 @@ export async function scanPage(inputUrl, options = {}) {
     clearTimeout(scanTimer);
     await context.close().catch(() => {});
   }
+}
+
+
+export async function scanPage(inputUrl, options = {}) {
+  const initial = await validatePublicUrl(inputUrl);
+  const location = Object.hasOwn(SCAN_LOCATIONS, options.location) ? options.location : 'us-or';
+  const locationConfig = SCAN_LOCATIONS[location];
+  const proxyUsername = locationConfig.username?.() || '';
+  const proxy = location === 'us-or'
+    ? null
+    : {
+        server: `http://${env.webshareHost}:${env.websharePort}`,
+        username: proxyUsername,
+        password: env.websharePassword
+      };
+
+  if (location !== 'us-or' && (!env.webshareHost || !env.websharePort || !proxyUsername || !env.websharePassword)) {
+    throw new Error('REGIONAL_PROXY_NOT_CONFIGURED');
+  }
+
+  let lastError;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      return await scanAttempt(initial, location, locationConfig, proxy);
+    } catch (error) {
+      lastError = error;
+      if (attempt >= 2 || !isTransientScanError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+
+  throw lastError;
 }
