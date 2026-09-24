@@ -62,7 +62,12 @@ async function inspectAllFrames(page) {
     bodyText: snapshots.map((item) => item.dom.bodyText || '').join('\n').slice(0, 100000),
     shadowDomInspected: snapshots.some((item) => item.dom.shadowDomInspected),
     consentRootClusterCount: snapshots.reduce((sum, item) => sum + (item.dom.consentRootClusterCount || 0), 0),
-    frameCountInspected: snapshots.length
+    frameCountInspected: snapshots.length,
+    shadowRootCount: snapshots.reduce((sum, item) => sum + (item.dom.shadowRootCount || 0), 0),
+    consentmoHostPresent: snapshots.some((item) => item.dom.consentmoHostPresent),
+    bodyTextLength: main.bodyTextLength || 0,
+    visibleControlCount: snapshots.reduce((sum, item) => sum + (item.dom.visibleControlCount || 0), 0),
+    consentLikeControlTexts: snapshots.flatMap((item) => item.dom.consentLikeControlTexts || []).slice(0, 12)
   };
 }
 
@@ -209,10 +214,10 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
     // asynchronously rendered and iframe-based consent interfaces without clicking them.
     await page.waitForTimeout(1_000).catch(() => {});
     let dom = null;
-    for (let attempt = 0; attempt < 9; attempt += 1) {
+    for (let attempt = 0; attempt < 14; attempt += 1) {
       dom = await inspectAllFrames(page);
       if (dom.bannerDetected || dom.controls.accept || dom.controls.reject || dom.controls.preferences) break;
-      if (attempt < 8) await page.waitForTimeout(750).catch(() => {});
+      if (attempt < 13) await page.waitForTimeout(750).catch(() => {});
     }
 
     const finalUrl = page.url();

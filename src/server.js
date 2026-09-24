@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.3.4';
+const SCANNER_VERSION = '1.3.5';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -143,7 +143,19 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
       score: report.score ?? null,
       concerns: report.summary?.concerns ?? null,
       scanLocation: raw.scanLocation,
-      navigationTimedOut: Boolean(raw.navigationTimedOut)
+      navigationTimedOut: Boolean(raw.navigationTimedOut),
+      domDiagnostics: {
+        finalUrl: raw.finalUrl,
+        title: raw.title,
+        bodyTextLength: raw.dom.bodyTextLength,
+        frameCount: raw.dom.frameCountInspected,
+        shadowRootCount: raw.dom.shadowRootCount,
+        consentmoHostPresent: raw.dom.consentmoHostPresent,
+        consentRootClusterCount: raw.dom.consentRootClusterCount,
+        visibleControlCount: raw.dom.visibleControlCount,
+        bannerDetected: raw.dom.bannerDetected,
+        blockedRequestLimit: raw.blockedRequests.filter((item) => item.reason === 'request-limit').length
+      }
     });
 
     return res.json(report);

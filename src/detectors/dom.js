@@ -211,7 +211,9 @@ export async function inspectDom(page) {
     // relationships stop at the shadow boundary. A root with multiple explicit
     // consent actions plus cookie/consent context is strong evidence by itself.
     for (const cluster of rootConsentClusters) {
-      if (cluster.host && isVisible(cluster.host)) candidates.push(cluster.host);
+      // A custom-element host may have no box (display: contents) even though
+      // its shadow-root buttons are visible. The visible actions are the proof.
+      if (cluster.host) candidates.push(cluster.host);
     }
 
     const dedupedCandidates = [...new Set(candidates)];
@@ -280,6 +282,9 @@ export async function inspectDom(page) {
       htmlMarkers,
       bodyText,
       shadowDomInspected: roots.length > 1,
+      shadowRootCount: roots.length - 1,
+      consentmoHostPresent: allElements.some((el) => el.matches?.('csm-cookie-consent')),
+      bodyTextLength: bodyText.length,
       visibleControlCount: uniqueControls.length,
       consentLikeControlTexts: controls.map((control) => control.text).slice(0, 20)
     };
