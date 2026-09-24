@@ -16,6 +16,12 @@ function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, (char) => ({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;' })[char]);
 }
 
+function confidenceIcon(confidence) {
+  const level = String(confidence || 'medium').toLowerCase();
+  const label = `${level.charAt(0).toUpperCase() + level.slice(1)}-confidence automated detection`;
+  return `<span class="confidence-icon" tabindex="0" role="img" aria-label="${escapeHtml(label)}" data-tooltip="${escapeHtml(label)}">ⓘ</span>`;
+}
+
 function renderCards(id, items, group) {
   const container = $(id);
   if (!items.length) {
@@ -28,7 +34,7 @@ function renderCards(id, items, group) {
       <details class="observation-row">
         <summary>
           <span class="observation-title">${escapeHtml(item.title)}</span>
-          <span class="observation-meta">Detection confidence: ${escapeHtml(item.confidence)}</span>
+          ${confidenceIcon(item.confidence)}
         </summary>
         <div class="observation-body">
           <div><span class="label">Detected</span><p class="detected">${escapeHtml(item.detected)}</p></div>
@@ -40,7 +46,7 @@ function renderCards(id, items, group) {
 
   container.innerHTML = items.map((item) => `
     <article class="card ${group === 'concern' ? 'card-concern' : group === 'passed' ? 'card-passed' : ''}">
-      <div class="card-head"><h3>${escapeHtml(item.title)}</h3><span class="confidence">${group === 'manual' ? 'Manual verification' : `Detection confidence: ${escapeHtml(item.confidence)}`}</span></div>
+      <div class="card-head"><h3>${escapeHtml(item.title)}</h3>${group === 'manual' ? '<span class="confidence">Manual verification</span>' : confidenceIcon(item.confidence)}</div>
       <span class="label">What was detected</span>
       <p class="detected">${escapeHtml(item.detected)}</p>
       <span class="label">Why it matters technically</span>

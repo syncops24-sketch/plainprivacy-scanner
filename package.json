@@ -1,6 +1,6 @@
 {
   "name": "plainprivacy-scanner-v1",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "private": true,
   "description": "PlainPrivacy automated technical privacy implementation scanner",
   "type": "module",

@@ -143,3 +143,60 @@ footer p { margin:4px 0; }
   border-color: rgba(0,201,167,.35);
   color: #aef4e8;
 }
+
+.confidence-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: .78rem;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+}
+.confidence-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 8px);
+  right: 0;
+  width: max-content;
+  max-width: 240px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #091525;
+  color: var(--white);
+  font-size: .72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  box-shadow: 0 10px 30px rgba(0,0,0,.3);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-2px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s ease;
+  pointer-events: none;
+}
+.confidence-icon:hover::after,
+.confidence-icon:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.card-concern .confidence-icon {
+  border-color: rgba(226,75,74,.45);
+  color: #ffc4c4;
+}
+.card-passed .confidence-icon {
+  border-color: rgba(0,201,167,.35);
+  color: #aef4e8;
+}
+.observation-row .confidence-icon {
+  margin-left: auto;
+}
