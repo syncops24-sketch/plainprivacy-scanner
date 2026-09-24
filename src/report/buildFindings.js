@@ -87,7 +87,5 @@ export function buildFindings(raw) {
   if (consentMode.detected) findings.push(finding('observation', 'Google Consent Mode-related signal detected', consentMode.signals.join(' | '), 'Presence confirms a consent-related Google signal, but the scanner does not decode or judge the correctness of the consent state.', consentMode.confidence, 'consent_mode'));
   else findings.push(finding('manual', 'Google Consent Mode not confidently detected', 'No clear Consent Mode-related network or code signal was identified.', 'Consent Mode may be absent, hidden in GTM, loaded later, or not applicable when Google tags are not used.', 'Low', 'consent_mode'));
 
-  findings.push(finding('manual', 'Duplicate tracking requires event-level verification', 'The automated scanner does not infer duplicate installation merely because the same tracking ID appears in multiple requests.', 'Normal analytics and advertising tools send repeated requests. Reliable duplicate detection requires comparing event signatures, installation sources, and user actions.', 'High', 'duplicates'));
-
   return { findings, cmps, trackers, consentMode, potentialCookies, traffic };
 }

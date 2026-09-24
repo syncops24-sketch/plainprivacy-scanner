@@ -34,4 +34,5 @@ test('technology/storage facts are observations rather than manual failures', ()
   assert.ok(findings.some((f) => f.status === 'observation' && f.title === 'Pre-interaction third-party requests require classification'));
   assert.ok(findings.some((f) => f.status === 'observation' && f.title === 'Google Consent Mode-related signal detected'));
   assert.ok(findings.some((f) => f.status === 'observation' && f.title === 'Tracker library/resource loaded before interaction'));
+  assert.equal(findings.some((f) => f.key === 'duplicates'), false);
 });

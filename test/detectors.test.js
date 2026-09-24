@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { classifyPreInteractionTrackerTraffic, detectPotentialNonessentialCookies, detectTrackers } from '../src/detectors/trackers.js';
 import { detectCmps } from '../src/detectors/cmp.js';
 import { detectConsentMode } from '../src/detectors/consentMode.js';
+import { DOM_REGEX } from '../src/detectors/dom.js';
+
+test('recognizes Consent Preferences as a settings entry point', () => {
+  assert.equal(DOM_REGEX.preferences.test('Consent Preferences'), true);
+  assert.equal(DOM_REGEX.settings.test('Consent Preferences'), true);
+  assert.equal(DOM_REGEX.settings.test('Product Preferences'), false);
+});
 
 test('detects common technologies from network/script/cookie evidence', () => {
   const raw = {
