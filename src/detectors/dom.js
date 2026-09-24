@@ -1,10 +1,11 @@
-const ACCEPT_WORDS = ['accept', 'accept all', 'allow all', 'agree', 'allow cookies', 'i agree'];
-const REJECT_WORDS = ['reject', 'reject all', 'deny', 'decline', 'refuse', 'essential only', 'necessary only'];
-const PREF_WORDS = ['preferences', 'cookie preferences', 'privacy preferences', 'settings', 'cookie settings', 'manage cookies', 'manage preferences', 'customize', 'customise'];
-const SETTINGS_WORDS = ['cookie settings', 'privacy settings', 'consent settings', 'manage consent', 'manage cookies', 'privacy choices', 'cookie preferences'];
+const ACCEPT_WORDS = ['accept', 'accept all', 'allow all', 'agree', 'allow cookies', 'i agree', 'yes, i agree', 'got it'];
+const REJECT_WORDS = ['reject', 'reject all', 'deny', 'decline', 'refuse', 'essential only', 'necessary only', 'continue without accepting'];
+const PREF_WORDS = ['preferences', 'cookie preferences', 'privacy preferences', 'settings', 'cookie settings', 'manage cookies', 'manage preferences', 'customize', 'customise', 'manage options', 'show purposes'];
+const SETTINGS_WORDS = ['cookie settings', 'privacy settings', 'consent settings', 'manage consent', 'manage cookies', 'privacy choices', 'cookie preferences', 'manage preferences'];
 
 function phraseRegex(words) {
-  return new RegExp(`(?:^|\\b)(${words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})(?:\\b|$)`, 'i');
+  const escaped = words.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'));
+  return new RegExp('(?:^|\\b)(' + escaped.join('|') + ')(?:\\b|$)', 'i');
 }
 
 export const DOM_REGEX = {
@@ -12,22 +13,44 @@ export const DOM_REGEX = {
   reject: phraseRegex(REJECT_WORDS),
   preferences: phraseRegex(PREF_WORDS),
   settings: phraseRegex(SETTINGS_WORDS),
-  privacyPolicy: /privacy\s*(policy|notice)/i,
-  cookiePolicy: /cookie\s*(policy|notice|statement)/i,
-  bannerText: /(cookie|consent)/i,
-  bannerMarker: /(cookie|consent|cmp|onetrust|optanon|cookiebot|usercentrics|termly|consentmo|didomi|iubenda|complianz|osano|trustarc|quantcast|sourcepoint)/i
+  privacyPolicy: /privacy\\s*(policy|notice)/i,
+  cookiePolicy: /cookie\\s*(policy|notice|statement)/i,
+  bannerText: /(cookie|cookies|consent|privacy choice|tracking preference)/i,
+  bannerMarker: /(cookie|consent|cmp|gdpr|ccpa|privacy|onetrust|optanon|cookiebot|usercentrics|termly|consentmo|didomi|iubenda|complianz|osano|trustarc|quantcast|sourcepoint|cookieyes|cky|csm)/i
 };
 
 export async function inspectDom(page) {
   return page.evaluate((regexSources) => {
     const regs = Object.fromEntries(Object.entries(regexSources).map(([k, src]) => [k, new RegExp(src, 'i')]));
-    const isVisible = (el) => {
-      if (!(el instanceof Element)) return false;
-      const style = getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || 1) > 0 && rect.width > 0 && rect.height > 0;
+
+    const composedParent = (el) => {
+      if (!el) return null;
+      if (el.parentElement) return el.parentElement;
+      const root = el.getRootNode?.();
+      return root && root.host instanceof Element ? root.host : null;
     };
-    const text = (el) => (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').slice(0, 500);
+
+    const composedAncestors = (el, maxDepth = 16) => {
+      const chain = [];
+      let current = el;
+      for (let depth = 0; depth < maxDepth; depth += 1) {
+        current = composedParent(current);
+        if (!current) break;
+        chain.push(current);
+      }
+      return chain;
+    };
+
+    const composedContains = (ancestor, node) => {
+      if (!ancestor || !node) return false;
+      if (ancestor === node) return true;
+      let current = node;
+      for (let depth = 0; depth < 32 && current; depth += 1) {
+        current = composedParent(current);
+        if (current === ancestor) return true;
+      }
+      return false;
+    };
 
     const roots = [document];
     const allElements = [];
@@ -39,77 +62,176 @@ export async function inspectDom(page) {
       }
     }
 
-    const controlElements = allElements
-      .filter((el) => el.matches?.('button, a, input[type="button"], input[type="submit"], [role="button"], [tabindex]') && isVisible(el))
-      .filter((el) => text(el));
-
-    const ancestorChain = (el, maxDepth = 10) => {
-      const chain = [];
-      let current = el;
-      for (let depth = 0; depth < maxDepth && current; depth += 1) {
-        let parent = current.parentElement;
-        if (!parent) {
-          const root = current.getRootNode?.();
-          parent = root && root.host instanceof Element ? root.host : null;
-        }
-        if (!parent) break;
-        if (!['HTML', 'BODY', 'MAIN'].includes(parent.tagName)) chain.push(parent);
-        current = parent;
-      }
-      return chain;
+    const isVisible = (el) => {
+      if (!(el instanceof Element)) return false;
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== 'hidden'
+        && style.display !== 'none'
+        && Number(style.opacity || 1) > 0
+        && rect.width > 0
+        && rect.height > 0;
     };
+
+    const ownText = (el) => {
+      if (!(el instanceof Element)) return '';
+      const inputValue = el instanceof HTMLInputElement ? (el.value || '') : '';
+      const label = el.getAttribute('aria-label') || el.getAttribute('title') || el.getAttribute('data-label') || '';
+      const visibleText = el.innerText || el.textContent || '';
+      const shadowText = el.shadowRoot?.textContent || '';
+      return [visibleText, shadowText, inputValue, label]
+        .filter(Boolean)
+        .join(' ')
+        .trim()
+        .replace(/\\s+/g, ' ')
+        .slice(0, 1200);
+    };
+
+    const markerText = (el) => {
+      if (!(el instanceof Element)) return '';
+      return [
+        ownText(el),
+        el.tagName?.toLowerCase() || '',
+        el.id || '',
+        typeof el.className === 'string' ? el.className : '',
+        el.getAttribute('role') || '',
+        el.getAttribute('aria-label') || '',
+        el.getAttribute('data-testid') || '',
+        el.getAttribute('data-cy') || ''
+      ].join(' ').slice(0, 2500);
+    };
+
+    const actionType = (value) => {
+      const s = String(value || '').trim();
+      if (!s || s.length > 180) return null;
+      if (regs.accept.test(s)) return 'accept';
+      if (regs.reject.test(s)) return 'reject';
+      if (regs.preferences.test(s)) return 'preferences';
+      return null;
+    };
+
+    const semanticControlSelector = [
+      'button',
+      'a',
+      'input[type="button"]',
+      'input[type="submit"]',
+      '[role="button"]',
+      '[role="menuitem"]',
+      '[tabindex]',
+      '[onclick]',
+      '[data-action]',
+      '[data-testid]'
+    ].join(',');
+
+    const controlElements = [];
+    for (const el of allElements) {
+      if (!isVisible(el)) continue;
+      const label = ownText(el);
+      const type = actionType(label);
+      if (!type) continue;
+
+      const semantic = el.matches?.(semanticControlSelector);
+      const childWithSameAction = [...el.children].some((child) => actionType(ownText(child)));
+      const leafish = el.children.length <= 3 && !childWithSameAction && label.length <= 100;
+      const controlishMarker = /(button|btn|action|choice|option|preference|accept|reject|decline|allow|deny)/i.test(markerText(el));
+
+      if (semantic || leafish || controlishMarker) controlElements.push(el);
+    }
+
+    const uniqueControls = [...new Set(controlElements)];
 
     const looksLikeConsentRegion = (el) => {
       if (!el || !isVisible(el)) return false;
-      const marker = `${text(el)} ${el.id || ''} ${String(el.className || '')}`;
-      return regs.bannerMarker.test(marker) && regs.bannerText.test(marker);
+      const marker = markerText(el);
+      const explicitMarker = regs.bannerMarker.test(marker);
+      const consentText = regs.bannerText.test(marker);
+      const role = el.getAttribute?.('role') || '';
+      const tag = el.tagName?.toLowerCase() || '';
+      const customConsentElement = /(?:cookie|consent|cmp|gdpr|privacy)/i.test(tag);
+      const dialogLike = /dialog|alertdialog|region/i.test(role);
+      return (explicitMarker && consentText) || (customConsentElement && consentText) || (dialogLike && consentText);
     };
 
-    // Start with conventional visible consent containers.
-    const conventionalCandidates = allElements.filter((el) =>
-      el.matches?.('div, section, aside, dialog, [role="dialog"], [role="alertdialog"], form') &&
-      looksLikeConsentRegion(el)
-    );
+    const labelsInside = (region) => uniqueControls
+      .filter((control) => composedContains(region, control))
+      .map((control) => ({ el: control, label: ownText(control), type: actionType(ownText(control)) }))
+      .filter((item) => item.type);
 
-    // Also anchor detection around explicit consent decision controls and walk
-    // upward. This catches CMPs that use custom elements or unusual wrappers.
-    const controlAnchoredCandidates = [];
-    for (const control of controlElements) {
-      const controlText = text(control);
-      const isConsentAction = regs.accept.test(controlText) || regs.reject.test(controlText) || regs.preferences.test(controlText);
-      if (!isConsentAction) continue;
-      const region = ancestorChain(control).find(looksLikeConsentRegion);
-      if (region) controlAnchoredCandidates.push(region);
+    const hasStrongActionCluster = (region) => {
+      const types = new Set(labelsInside(region).map((item) => item.type));
+      return types.size >= 2 && (types.has('accept') || types.has('reject'));
+    };
+
+    const candidates = [];
+
+    for (const el of allElements) {
+      if (!isVisible(el)) continue;
+      const tag = el.tagName?.toLowerCase() || '';
+      const candidateTag = el.matches?.('div, section, aside, dialog, form, [role="dialog"], [role="alertdialog"], [role="region"]')
+        || tag.includes('-');
+      if (candidateTag && looksLikeConsentRegion(el) && hasStrongActionCluster(el)) candidates.push(el);
     }
 
-    const candidates = [...new Set([...conventionalCandidates, ...controlAnchoredCandidates])];
+    for (const control of uniqueControls) {
+      for (const ancestor of composedAncestors(control, 16)) {
+        if (!isVisible(ancestor)) continue;
+        if (!hasStrongActionCluster(ancestor)) continue;
+        if (!looksLikeConsentRegion(ancestor)) continue;
+        candidates.push(ancestor);
+        break;
+      }
+    }
 
-    const bannerElements = candidates.filter((el) => {
-      const descendantControls = controlElements.filter((control) => el === control || el.contains(control));
-      const labels = descendantControls.map((control) => text(control));
-      const hasAccept = labels.some((value) => regs.accept.test(value));
-      const hasReject = labels.some((value) => regs.reject.test(value));
-      const hasPreferences = labels.some((value) => regs.preferences.test(value));
+    for (const el of allElements) {
+      if (!el.shadowRoot || !isVisible(el)) continue;
+      if (looksLikeConsentRegion(el) && hasStrongActionCluster(el)) candidates.push(el);
+    }
 
-      // Require a strong consent-control pattern to avoid the earlier false
-      // positives from generic privacy/cookie content.
-      return (hasAccept && hasReject) || (hasAccept && hasPreferences) || (hasReject && hasPreferences);
-    });
+    const dedupedCandidates = [...new Set(candidates)];
+    const bannerElements = dedupedCandidates.filter((candidate) =>
+      !dedupedCandidates.some((other) =>
+        other !== candidate
+        && composedContains(candidate, other)
+        && hasStrongActionCluster(other)
+        && looksLikeConsentRegion(other)
+      )
+    );
 
-    const isInsideBanner = (el) => bannerElements.some((banner) => banner === el || banner.contains(el));
-    const controls = controlElements
-      .map((el) => ({
-        text: text(el), id: el.id || '', cls: String(el.className || '').slice(0, 200), href: el.href || '', insideBanner: isInsideBanner(el)
-      }))
-      .filter((x) => x.text);
+    const isInsideBanner = (el) => bannerElements.some((banner) => composedContains(banner, el));
 
-    const links = allElements.filter((el) => el.matches?.('a[href]') && isVisible(el)).map((a) => ({ text: text(a), href: a.href }));
-    const bodyText = (document.body?.innerText || '').slice(0, 100000);
-    const htmlMarkers = document.documentElement.outerHTML.slice(0, 500000);
+    const controls = uniqueControls.map((el) => ({
+      text: ownText(el).slice(0, 500),
+      id: el.id || '',
+      cls: String(el.className || '').slice(0, 200),
+      href: el.href || '',
+      insideBanner: isInsideBanner(el),
+      action: actionType(ownText(el))
+    }));
 
-    const findBannerControl = (name) => controls.find((c) => c.insideBanner && regs[name].test(c.text)) || null;
-    const findSettingsEntry = () => controls.find((c) => !c.insideBanner && regs.settings.test(c.text)) || null;
-    const policy = (name) => links.find((l) => regs[name].test(`${l.text} ${l.href}`));
+    const links = allElements
+      .filter((el) => el.matches?.('a[href]') && isVisible(el))
+      .map((a) => ({ text: ownText(a).slice(0, 500), href: a.href }));
+
+    const bodyText = [
+      document.body?.innerText || '',
+      ...roots.filter((root) => root instanceof ShadowRoot).map((root) => root.textContent || '')
+    ].join('\\n').slice(0, 100000);
+
+    const htmlMarkers = [
+      document.documentElement.outerHTML,
+      ...allElements.filter((el) => el.shadowRoot).map((el) =>
+        '<shadow-host tag="' + (el.tagName?.toLowerCase() || '') + '" id="' + (el.id || '') + '" class="' + String(el.className || '') + '">' +
+        (el.shadowRoot?.innerHTML || '') + '</shadow-host>'
+      )
+    ].join('\\n').slice(0, 500000);
+
+    const findBannerControl = (name) =>
+      controls.find((c) => c.insideBanner && c.action === name) || null;
+
+    const findSettingsEntry = () =>
+      controls.find((c) => !c.insideBanner && regs.settings.test(c.text)) || null;
+
+    const policy = (name) => links.find((l) => regs[name].test(l.text + ' ' + l.href));
 
     return {
       title: document.title,
@@ -128,11 +250,8 @@ export async function inspectDom(page) {
       htmlMarkers,
       bodyText,
       shadowDomInspected: roots.length > 1,
-      visibleControlCount: controlElements.length,
-      consentLikeControlTexts: controlElements
-        .map((el) => text(el))
-        .filter((value) => regs.accept.test(value) || regs.reject.test(value) || regs.preferences.test(value))
-        .slice(0, 20)
+      visibleControlCount: uniqueControls.length,
+      consentLikeControlTexts: controls.map((control) => control.text).slice(0, 20)
     };
   }, Object.fromEntries(Object.entries(DOM_REGEX).map(([k, re]) => [k, re.source])));
 }

@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.3.2';
+const SCANNER_VERSION = '1.3.3';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
