@@ -95,8 +95,12 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
   });
 
   const page = await context.newPage();
-  const navigationTimeoutMs = Math.max(env.navigationTimeoutMs, 20_000);
-  const scanTimeoutMs = Math.max(env.scanTimeoutMs, 35_000);
+  const navigationTimeoutMs = location === 'us-or'
+    ? Math.max(env.navigationTimeoutMs, 30_000)
+    : Math.max(env.navigationTimeoutMs, 20_000);
+  const scanTimeoutMs = location === 'us-or'
+    ? Math.max(env.scanTimeoutMs, 45_000)
+    : Math.max(env.scanTimeoutMs, 35_000);
 
   page.setDefaultTimeout(4_000);
   page.setDefaultNavigationTimeout(navigationTimeoutMs);
@@ -104,6 +108,7 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
   const network = [];
   const blocked = [];
   const scripts = new Set();
+  const navigationUrls = [];
   let requestCount = 0;
   let mainDocumentTooLarge = false;
 
@@ -132,6 +137,9 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
     const url = request.url();
     network.push({ url, method: request.method(), type: request.resourceType(), postDataPreview: String(request.postData() || '').slice(0, 1000) });
     if (request.resourceType() === 'script') scripts.add(url);
+    if (request.resourceType() === 'document' && request.isNavigationRequest()) {
+      navigationUrls.push(url);
+    }
   });
 
   page.on('response', async (response) => {
@@ -153,15 +161,43 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
   try {
     const navPromise = page.goto(initial.url.toString(), { waitUntil: 'domcontentloaded', timeout: navigationTimeoutMs });
     const abortPromise = new Promise((_, reject) => scanAbort.signal.addEventListener('abort', () => reject(new Error('SCAN_TIMEOUT')), { once: true }));
-    const response = await Promise.race([navPromise, abortPromise]);
-    if (!response) throw new Error('No response received from the target site.');
 
-    const chain = [];
-    let req = response.request();
-    while (req) {
-      chain.unshift(req.url());
-      req = req.redirectedFrom();
+    let response = null;
+    let navigationTimedOut = false;
+    try {
+      response = await Promise.race([navPromise, abortPromise]);
+    } catch (error) {
+      if (error?.name !== 'TimeoutError') throw error;
+
+      const usableDocument = await page.evaluate(() => {
+        const htmlLength = document.documentElement?.innerHTML?.length || 0;
+        const hasBody = Boolean(document.body);
+        const hasVisibleStructure = Boolean(
+          document.querySelector('main, header, footer, form, button, [role="dialog"], [class*="banner"], [id*="banner"]')
+        );
+        return hasBody && htmlLength >= 500 && hasVisibleStructure;
+      }).catch(() => false);
+
+      if (!usableDocument) throw error;
+      navigationTimedOut = true;
     }
+
+    if (!response && !navigationTimedOut) {
+      throw new Error('No response received from the target site.');
+    }
+
+    const chain = response
+      ? (() => {
+          const urls = [];
+          let req = response.request();
+          while (req) {
+            urls.unshift(req.url());
+            req = req.redirectedFrom();
+          }
+          return urls;
+        })()
+      : [...new Set([initial.url.toString(), ...navigationUrls, page.url()].filter(Boolean))];
+
     if (chain.length - 1 > env.maxRedirects) throw new Error('Too many redirects.');
     for (const url of chain) await validatePublicUrl(url);
 
@@ -230,6 +266,7 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
       scripts: [...scripts],
       blockedRequests: blocked,
       redirectCount: chain.length - 1,
+      navigationTimedOut,
       scannedAt: new Date().toISOString(),
       scanLocation: location === 'us-or' ? env.scanLocation : locationConfig.label
     };

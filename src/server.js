@@ -9,7 +9,7 @@ import { createReport } from './report/report.js';
 
 const app = express();
 const semaphore = new Semaphore(env.maxConcurrentScans);
-const SCANNER_VERSION = '1.3.1';
+const SCANNER_VERSION = '1.3.2';
 
 function logScanEvent(payload) {
   console.log(JSON.stringify({
@@ -142,7 +142,8 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
       durationMs: Date.now() - startedAt,
       score: report.score ?? null,
       concerns: report.summary?.concerns ?? null,
-      scanLocation: raw.scanLocation
+      scanLocation: raw.scanLocation,
+      navigationTimedOut: Boolean(raw.navigationTimedOut)
     });
 
     return res.json(report);
