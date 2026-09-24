@@ -13,8 +13,8 @@ export const DOM_REGEX = {
   reject: phraseRegex(REJECT_WORDS),
   preferences: phraseRegex(PREF_WORDS),
   settings: phraseRegex(SETTINGS_WORDS),
-  privacyPolicy: /privacy\\s*(policy|notice)/i,
-  cookiePolicy: /cookie\\s*(policy|notice|statement)/i,
+  privacyPolicy: /privacy\s*(policy|notice)/i,
+  cookiePolicy: /cookie\s*(policy|notice|statement)/i,
   bannerText: /(cookie|cookies|consent|privacy choice|tracking preference)/i,
   bannerMarker: /(cookie|consent|cmp|gdpr|ccpa|privacy|onetrust|optanon|cookiebot|usercentrics|termly|consentmo|didomi|iubenda|complianz|osano|trustarc|quantcast|sourcepoint|cookieyes|cky|csm)/i
 };
@@ -83,7 +83,7 @@ export async function inspectDom(page) {
         .filter(Boolean)
         .join(' ')
         .trim()
-        .replace(/\\s+/g, ' ')
+        .replace(/\s+/g, ' ')
         .slice(0, 1200);
     };
 
@@ -140,6 +140,25 @@ export async function inspectDom(page) {
 
     const uniqueControls = [...new Set(controlElements)];
 
+    const rootConsentClusters = [];
+    for (const root of roots) {
+      const controlsInRoot = uniqueControls.filter((control) => control.getRootNode?.() === root);
+      const types = new Set(controlsInRoot.map((control) => actionType(ownText(control))).filter(Boolean));
+      if (types.size < 2 || (!types.has('accept') && !types.has('reject'))) continue;
+
+      const rootText = root instanceof ShadowRoot
+        ? ((root.textContent || '') + ' ' + markerText(root.host))
+        : (document.body?.innerText || document.body?.textContent || '');
+
+      if (!regs.bannerText.test(rootText) && !regs.bannerMarker.test(rootText)) continue;
+
+      rootConsentClusters.push({
+        root,
+        host: root instanceof ShadowRoot ? root.host : document.body,
+        controls: controlsInRoot
+      });
+    }
+
     const looksLikeConsentRegion = (el) => {
       if (!el || !isVisible(el)) return false;
       const marker = markerText(el);
@@ -187,6 +206,14 @@ export async function inspectDom(page) {
       if (looksLikeConsentRegion(el) && hasStrongActionCluster(el)) candidates.push(el);
     }
 
+    // Root-level fallback for web components. Some CMPs render their entire
+    // interface inside an open shadow root where normal Element.contains()
+    // relationships stop at the shadow boundary. A root with multiple explicit
+    // consent actions plus cookie/consent context is strong evidence by itself.
+    for (const cluster of rootConsentClusters) {
+      if (cluster.host && isVisible(cluster.host)) candidates.push(cluster.host);
+    }
+
     const dedupedCandidates = [...new Set(candidates)];
     const bannerElements = dedupedCandidates.filter((candidate) =>
       !dedupedCandidates.some((other) =>
@@ -197,7 +224,9 @@ export async function inspectDom(page) {
       )
     );
 
-    const isInsideBanner = (el) => bannerElements.some((banner) => composedContains(banner, el));
+    const isInsideBanner = (el) =>
+      bannerElements.some((banner) => composedContains(banner, el))
+      || rootConsentClusters.some((cluster) => cluster.controls.includes(el));
 
     const controls = uniqueControls.map((el) => ({
       text: ownText(el).slice(0, 500),
@@ -245,8 +274,9 @@ export async function inspectDom(page) {
         privacy: policy('privacyPolicy') || null,
         cookie: policy('cookiePolicy') || null
       },
-      bannerDetected: bannerElements.length > 0,
-      bannerCandidateCount: bannerElements.length,
+      bannerDetected: bannerElements.length > 0 || rootConsentClusters.length > 0,
+      bannerCandidateCount: Math.max(bannerElements.length, rootConsentClusters.length),
+      consentRootClusterCount: rootConsentClusters.length,
       htmlMarkers,
       bodyText,
       shadowDomInspected: roots.length > 1,

@@ -61,6 +61,7 @@ async function inspectAllFrames(page) {
     htmlMarkers: snapshots.map((item) => item.dom.htmlMarkers || '').join('\n').slice(0, 500000),
     bodyText: snapshots.map((item) => item.dom.bodyText || '').join('\n').slice(0, 100000),
     shadowDomInspected: snapshots.some((item) => item.dom.shadowDomInspected),
+    consentRootClusterCount: snapshots.reduce((sum, item) => sum + (item.dom.consentRootClusterCount || 0), 0),
     frameCountInspected: snapshots.length
   };
 }
@@ -206,12 +207,12 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
     // Give client-rendered CMPs time to initialize, then poll visible consent UI
     // across the main document and any child frames. This improves detection for
     // asynchronously rendered and iframe-based consent interfaces without clicking them.
-    await page.waitForTimeout(900).catch(() => {});
+    await page.waitForTimeout(1_000).catch(() => {});
     let dom = null;
-    for (let attempt = 0; attempt < 6; attempt += 1) {
+    for (let attempt = 0; attempt < 9; attempt += 1) {
       dom = await inspectAllFrames(page);
       if (dom.bannerDetected || dom.controls.accept || dom.controls.reject || dom.controls.preferences) break;
-      if (attempt < 5) await page.waitForTimeout(650).catch(() => {});
+      if (attempt < 8) await page.waitForTimeout(750).catch(() => {});
     }
 
     const finalUrl = page.url();
