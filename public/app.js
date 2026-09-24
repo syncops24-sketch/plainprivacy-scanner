@@ -4,6 +4,7 @@ const button = $('scan-button');
 const progress = $('progress');
 const errorBox = $('error');
 const results = $('results');
+let currentReport = null;
 
 const progressSteps = [
   ['Opening a clean browser session…', 'Loading the submitted public page without consent interaction.'],
@@ -55,6 +56,12 @@ function renderCards(id, items, group) {
 }
 
 function renderReport(report) {
+  currentReport = report;
+  const scannedHost = (() => {
+    try { return new URL(report.finalUrl || report.requestedUrl || '').hostname; } catch { return report.finalHostname || 'Website'; }
+  })();
+  $('print-report-site').textContent = scannedHost;
+  $('print-report-meta').textContent = `${report.scanLocation} · ${new Date(report.scannedAt || Date.now()).toLocaleString()}`;
   $('score').textContent = report.score ?? '—';
   $('score-label').textContent = report.scoreLabel;
   $('score-explanation').textContent = report.scoreExplanation;
@@ -131,3 +138,34 @@ form.addEventListener('submit', async (event) => {
     button.disabled = false;
   }
 });
+
+
+function preparePrintReport() {
+  if (!currentReport) return;
+  const details = [...document.querySelectorAll('#results details.observation-row')];
+  details.forEach((detail) => {
+    detail.dataset.wasOpen = detail.open ? '1' : '0';
+    detail.open = true;
+  });
+
+  const previousTitle = document.title;
+  const host = (() => {
+    try { return new URL(currentReport.finalUrl || currentReport.requestedUrl || '').hostname; } catch { return 'website'; }
+  })();
+  const date = new Date(currentReport.scannedAt || Date.now()).toISOString().slice(0, 10);
+  document.title = `PlainPrivacy-report-${host}-${date}`;
+
+  const restore = () => {
+    document.title = previousTitle;
+    details.forEach((detail) => {
+      detail.open = detail.dataset.wasOpen === '1';
+      delete detail.dataset.wasOpen;
+    });
+    window.removeEventListener('afterprint', restore);
+  };
+
+  window.addEventListener('afterprint', restore);
+  window.print();
+}
+
+$('download-pdf')?.addEventListener('click', preparePrintReport);
