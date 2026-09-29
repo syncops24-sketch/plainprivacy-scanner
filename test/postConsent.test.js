@@ -57,6 +57,10 @@ test('an interface that never closes cannot pass reopening', async () => {
   const r = await testPostConsent(f.page, { inspect: f.inspect, budgetMs: 30 });
   assert.equal(r.reopened, false);
   assert.deepEqual(f.clicks, ['accept']);
+  assert.equal(r.stage, 'waiting-for-banner-close');
+  assert.equal(r.reason, 'initial-interface-did-not-close');
+  assert.equal(r.timedOut, true);
+  assert.equal(r.timeoutReason, 'post-consent-time-budget-exhausted');
 });
 
 test('clicking a widget without reopening is manual', async () => {
@@ -65,6 +69,60 @@ test('clicking a widget without reopening is manual', async () => {
   assert.equal(r.reopened, false);
   assert.equal(r.settingsClicked, true);
   assert.equal(r.status, 'manual');
+  assert.equal(r.stage, 'waiting-for-reopen');
+  assert.equal(r.reason, 'settings-click-did-not-reopen-interface');
+});
+
+test('missing widget timeout preserves settings-search stage and target outcomes', async () => {
+  const f = fixture({ delayWidget: 100000 });
+  const r = await testPostConsent(f.page, { inspect: f.inspect, budgetMs: 30 });
+  assert.equal(r.stage, 'locating-settings');
+  assert.equal(r.reason, 'settings-control-not-confidently-detected');
+  assert.equal(r.timedOut, true);
+  assert.ok(r.diagnostics.targetSearches.some((s) => s.action === 'settings' && s.outcome === 'no-safe-target'));
+});
+
+test('captures bounded post-click candidates, prioritizing external controls', async () => {
+  const f = fixture();
+  const inspect = async (frame, options) => {
+    const value = await f.inspect(frame, options);
+    if (!options?.targetAction) value.withdrawalDiagnostics = {
+      candidateCount: 13, candidates: Array.from({ length: 13 }, (_, i) => ({
+        id: i === 12 ? 'privacy-widget' : 'internal-' + i,
+        insideBanner: i !== 12, visible: i === 12, hiddenReasons: i === 12 ? [] : ['ancestor:display-none']
+      }))
+    };
+    return value;
+  };
+  const r = await testPostConsent(f.page, { inspect, budgetMs: 200 });
+  const snapshot = r.diagnostics.snapshots[0];
+  assert.equal(snapshot.stage, 'waiting-for-banner-close');
+  assert.equal(snapshot.candidates.length, 8);
+  assert.equal(snapshot.candidates[0].id, 'privacy-widget');
+  assert.equal(snapshot.truncated, true);
+});
+
+test('frame errors retain operation and stage without dumping error messages', async () => {
+  const f = fixture({ frameFails: true });
+  const r = await testPostConsent(f.page, { inspect: f.inspect, budgetMs: 100 });
+  assert.equal(r.diagnostics.errors[0].operation, 'target-accept');
+  assert.equal(r.diagnostics.errors[0].stage, 'locating-accept');
+  assert.equal(r.diagnostics.errors[0].name, 'Error');
+  assert.equal(r.diagnostics.errors[0].message, undefined);
+});
+
+test('a late browser evaluation cannot mutate the returned timeout record', async () => {
+  const f = fixture();
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const inspect = async (frame, options) => options?.targetAction ? f.inspect(frame, options) : pending;
+  const r = await testPostConsent(f.page, { inspect, budgetMs: 30 });
+  const before = JSON.stringify(r);
+  release({ bannerDetected: false });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(JSON.stringify(r), before);
+  assert.equal(r.stage, 'waiting-for-banner-close');
+  assert.equal(r.timedOut, true);
 });
 
 test('failed clicks and inaccessible frames degrade to manual', async () => {
