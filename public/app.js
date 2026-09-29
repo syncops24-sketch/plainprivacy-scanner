@@ -73,7 +73,7 @@ function renderReport(report) {
   $('core-check-breakdown').innerHTML = coreChecks.length ? `
     <div><strong>Passed (${passedCore.length}):</strong> ${escapeHtml(passedCore.map((x) => x.label).join(' · ') || 'None')}</div>
     <div><strong>Concern (${concernCore.length}):</strong> ${escapeHtml(concernCore.map((x) => x.label).join(' · ') || 'None')}</div>
-    <div><strong>Not assessed (${unknownCore.length}):</strong> ${escapeHtml(unknownCore.map((x) => x.label).join(' · ') || 'None')}</div>
+    <div><strong>Manual / not assessed (${unknownCore.length}):</strong> ${escapeHtml(unknownCore.map((x) => x.label).join(' · ') || 'None')}</div>
   ` : '';
   $('scan-location').textContent = `Scan location: ${report.scanLocation}. Regional behavior may differ elsewhere.`;
   $('passed-count').textContent = report.summary.passed;
