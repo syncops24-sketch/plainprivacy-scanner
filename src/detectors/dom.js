@@ -312,6 +312,92 @@ export async function inspectDom(page) {
       ))
       .slice(0, 30);
 
+    // Diagnostic candidates deliberately include hidden controls. These records
+    // never participate in classification or scoring. No form values, arbitrary
+    // data attributes, URL queries, or full ancestor text are logged here.
+    let withdrawalDiagnostics;
+    try {
+      const short = (value, max = 120) => String(value || '').replace(/\s+/g, ' ').slice(0, max);
+      const metadata = (el) => ({
+        tag: el.tagName?.toLowerCase() || '',
+        id: short(el.id),
+        cls: short(typeof el.className === 'string' ? el.className : ''),
+        role: short(el.getAttribute('role')),
+        ariaLabel: short(el.getAttribute('aria-label')),
+        title: short(el.getAttribute('title'))
+      });
+      const diagnosticCandidates = [];
+      let diagnosticCandidateCount = 0;
+      for (const el of allElements) {
+        if (!el.matches?.(semanticControlSelector)) continue;
+        const ancestors = composedAncestors(el);
+        const nearby = ancestors.slice(0, 3).filter((a) => !a.matches('body, html'));
+        const own = metadata(el);
+        const data = Object.fromEntries(['data-action', 'data-testid', 'data-cy', 'data-label']
+          .filter((name) => el.hasAttribute(name))
+          .map((name) => [name, short(el.getAttribute(name))]));
+        const text = short(el.textContent, 120);
+        const context = [text, ...Object.values(own), ...Object.values(data),
+          ...nearby.flatMap((a) => Object.values(metadata(a)))].join(' ');
+        const reasons = [];
+        if (regs.bannerMarker.test(context) || regs.settings.test(context)) reasons.push('consent-metadata-or-context');
+        if (el.hasAttribute('aria-controls') || el.hasAttribute('aria-haspopup')) reasons.push('controls-or-opens-region');
+        const style = getComputedStyle(el);
+        if (!text.trim() && [el, ...nearby].some((a) => /^(fixed|sticky)$/.test(getComputedStyle(a).position))) {
+          reasons.push('persistent-icon-control');
+        }
+        if (!reasons.length) continue;
+        diagnosticCandidateCount += 1;
+        if (diagnosticCandidates.length >= 60) {
+          const replaceIndex = diagnosticCandidates.findIndex((c) => c.insideBanner);
+          if (isInsideBanner(el) || replaceIndex < 0) continue;
+          diagnosticCandidates.splice(replaceIndex, 1);
+        }
+        const rect = el.getBoundingClientRect();
+        const hiddenReasons = [];
+        for (const node of [el, ...ancestors]) {
+          const s = getComputedStyle(node);
+          const prefix = node === el ? 'self:' : 'ancestor:';
+          if (s.display === 'none') hiddenReasons.push(prefix + 'display-none');
+          if (Number(s.opacity) === 0) hiddenReasons.push(prefix + 'opacity-zero');
+          if (s.contentVisibility === 'hidden') hiddenReasons.push(prefix + 'content-visibility-hidden');
+        }
+        // Visibility is inherited but descendants can override it.
+        if (/^(hidden|collapse)$/.test(style.visibility)) hiddenReasons.push('self:visibility-' + style.visibility);
+        if (!rect.width || !rect.height) hiddenReasons.push('no-layout-box');
+        let href = '';
+        try { const u = new URL(el.getAttribute('href'), document.baseURI); if (/^https?:$/.test(u.protocol) && el.hasAttribute('href')) href = short(u.origin + u.pathname, 180); } catch {}
+        const path = [el, ...ancestors].slice(0, 12).map((node) =>
+          node.tagName.toLowerCase() + ':' + Array.prototype.indexOf.call(node.parentNode?.children || [], node)
+        ).join('/');
+        diagnosticCandidates.push({
+          key: path, ...own, text, href, data,
+          ancestors: nearby.map(metadata),
+          ariaControls: short(el.getAttribute('aria-controls')),
+          insideBanner: isInsideBanner(el),
+          visible: hiddenReasons.length === 0,
+          detectorVisible: isVisible(el),
+          hiddenReasons: [...new Set(hiddenReasons)],
+          ariaHidden: [el, ...ancestors].some((a) => a.getAttribute('aria-hidden') === 'true'),
+          inert: [el, ...ancestors].some((a) => a.hasAttribute('inert')),
+          inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth,
+          rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+          reasons
+        });
+      }
+      // Prioritize external entry points over banner controls in bounded logs.
+      diagnosticCandidates.sort((a, b) => Number(a.insideBanner) - Number(b.insideBanner));
+      withdrawalDiagnostics = {
+        documentId: String(performance.timeOrigin),
+        observedAtMs: Math.round(performance.now()),
+        candidateCount: diagnosticCandidateCount,
+        truncated: diagnosticCandidateCount > 60,
+        candidates: diagnosticCandidates
+      };
+    } catch {
+      withdrawalDiagnostics = { error: 'diagnostic-capture-failed' };
+    }
+
     const bodyText = [
       document.body?.innerText || '',
       ...roots.filter((root) => root instanceof ShadowRoot).map((root) => root.textContent || '')
@@ -402,7 +488,8 @@ export async function inspectDom(page) {
       visibleControlCount: uniqueControls.length,
       consentLikeControlTexts: controls.map((control) => control.text).slice(0, 20),
       policyLinkCandidates,
-      consentControlCandidates
+      consentControlCandidates,
+      withdrawalDiagnostics
     };
   }, Object.fromEntries(Object.entries(DOM_REGEX).map(([k, re]) => [k, re.source])));
 }
