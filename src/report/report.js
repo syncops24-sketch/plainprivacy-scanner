@@ -38,6 +38,7 @@ export function createReport(raw) {
       manual: detection.findings.filter((f) => f.status === 'manual')
     },
     technicalEvidence: {
+      postConsent: raw.postConsent || null,
       cmpDetected: detection.cmps.map((cmp) => cmp.name),
       cmpEvidence: detection.cmps.map((cmp) => ({ name: cmp.name, evidence: cmp.evidence })),
       trackerTechnologies: detection.trackers.map((t) => t.name),
@@ -55,7 +56,7 @@ export function createReport(raw) {
     },
     limitations: [
       'Whether every tracker respects Reject, Accept, or later consent changes',
-      'Consent withdrawal after a prior choice (a settings entry point can be detected, but The automated scanner does not click it)',
+      'Actual consent withdrawal and tracking after changed preferences (the scanner may click Accept and test reopening, but does not disable purposes or verify saved changes)',
       'Regional and geolocation-dependent behavior outside the stated scan location',
       'California opt-out and Global Privacy Control (GPC) behavior',
       'Full granular consent-category mapping',
