@@ -245,6 +245,26 @@ export async function inspectDom(page) {
       .filter((el) => el.matches?.('a[href]') && isVisible(el))
       .map((a) => ({ text: ownText(a).slice(0, 500), href: a.href }));
 
+    // Diagnostic-only evidence. Keep this deliberately bounded so logs stay
+    // useful without turning scanner_completed into a DOM dump.
+    const policyLinkCandidates = links
+      .filter((link) => /privacy|cookie|consent|gegevens|datenschutz|confidentialit|privacidad/i.test(link.text + ' ' + link.href))
+      .slice(0, 20);
+
+    const consentControlCandidates = allElements
+      .filter((el) => isVisible(el) && el.matches?.(semanticControlSelector))
+      .map((el) => ({
+        text: ownText(el).slice(0, 180),
+        tag: el.tagName?.toLowerCase() || '',
+        id: el.id || '',
+        role: el.getAttribute?.('role') || '',
+        ariaLabel: el.getAttribute?.('aria-label') || ''
+      }))
+      .filter((item) => /cookie|consent|privacy|accept|allow|agree|reject|deny|decline|preference|setting|custom|toestaan|aanpassen|weigern|ablehnen|akzept/i.test(
+        [item.text, item.id, item.role, item.ariaLabel].join(' ')
+      ))
+      .slice(0, 30);
+
     const bodyText = [
       document.body?.innerText || '',
       ...roots.filter((root) => root instanceof ShadowRoot).map((root) => root.textContent || '')
@@ -290,7 +310,9 @@ export async function inspectDom(page) {
       consentmoHostPresent: allElements.some((el) => el.matches?.('csm-cookie-consent')),
       bodyTextLength: bodyText.length,
       visibleControlCount: uniqueControls.length,
-      consentLikeControlTexts: controls.map((control) => control.text).slice(0, 20)
+      consentLikeControlTexts: controls.map((control) => control.text).slice(0, 20),
+      policyLinkCandidates,
+      consentControlCandidates
     };
   }, Object.fromEntries(Object.entries(DOM_REGEX).map(([k, re]) => [k, re.source])));
 }
