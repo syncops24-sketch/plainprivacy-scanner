@@ -8,7 +8,9 @@ export function calculateScore(findings, totalCoreChecks = 12) {
 
   // Headline score reflects only checks the scanner could actually assess.
   // Coverage is reported separately so unknown checks never look like failures.
-  const score = observedScore;
+  // Headline score intentionally treats unassessed/manual core checks as zero points.
+  // This keeps the score conservative while coverage explains what automation could verify.
+  const score = observedScore === null ? null : Math.round(observedScore * coverage);
 
   return {
     score,
