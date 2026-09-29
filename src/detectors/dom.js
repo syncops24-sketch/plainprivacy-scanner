@@ -289,6 +289,42 @@ export async function inspectDom(page, { targetAction = null } = {}) {
 
     // Diagnostic-only evidence. Keep this deliberately bounded so logs stay
     // useful without turning scanner_completed into a DOM dump.
+    // Interactive target lookup is latency-sensitive. Resolve the target before
+    // building the large diagnostics payload below; otherwise CMP-heavy pages can
+    // spend seconds serializing candidates and exhaust the post-consent budget.
+    if (targetAction) {
+      const actionable = (el) => {
+        if (!el.matches?.('button, a, input[type="button"], [role="button"]') || !isVisible(el)) return false;
+        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        if ([el, ...composedAncestors(el)].some((a) => a.hasAttribute('inert') || a.getAttribute('aria-hidden') === 'true'
+          || getComputedStyle(a).display === 'none' || Number(getComputedStyle(a).opacity) === 0)) return false;
+        if (el.closest?.('form') && (el.tagName === 'BUTTON' && (!el.getAttribute('type') || el.getAttribute('type') === 'submit'))) return false;
+        if (el.tagName === 'A') {
+          const href = el.getAttribute('href') || '';
+          if (href && !href.startsWith('#')) return false;
+        }
+        return true;
+      };
+      const targets = allElements.filter((el) => {
+        if (!actionable(el)) return false;
+        const own = markerText(el);
+        if (targetAction === 'accept') {
+          return isInsideBanner(el) && resolvedActionType(el) === 'accept'
+            && !regs.reject.test(own) && !regs.preferences.test(own)
+            && !/got it|necessary only|essential only/i.test(own)
+            && /accept|allow|agree|opt.?in|toestaan|accepter|akzept|aceptar|accetta|aceitar/i.test(own);
+        }
+        if (targetAction !== 'settings' || isInsideBanner(el)) return false;
+        const context = [own, ...composedAncestors(el, 2).filter((a) => !a.matches('body, html'))
+          .map((a) => [a.id, typeof a.className === 'string' ? a.className : '', a.getAttribute('aria-label')].join(' '))].join(' ');
+        return regs.settings.test(own) || (
+          /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(context)
+          && /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(context)
+        );
+      });
+      return targets.length === 1 ? targets[0] : targets.length > 1 ? 'ambiguous' : null;
+    }
+
     const policyLinkCandidates = links
       .filter((link) => /privacy|cookie|consent|gegevens|datenschutz|confidentialit|privacidad/i.test(link.text + ' ' + link.href))
       .slice(0, 20);
@@ -464,42 +500,6 @@ export async function inspectDom(page, { targetAction = null } = {}) {
     };
 
     const policy = (name) => links.find((l) => regs[name].test(l.text + ' ' + l.href));
-
-    if (targetAction) {
-      // Interactive targeting is deliberately stricter than passive detection.
-      // Never click containers, submit controls, navigational links, or a
-      // control whose purpose is inferred from unrelated ancestor page text.
-      const actionable = (el) => {
-        if (!el.matches?.('button, a, input[type="button"], [role="button"]') || !isVisible(el)) return false;
-        if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
-        if ([el, ...composedAncestors(el)].some((a) => a.hasAttribute('inert') || a.getAttribute('aria-hidden') === 'true'
-          || getComputedStyle(a).display === 'none' || Number(getComputedStyle(a).opacity) === 0)) return false;
-        if (el.closest?.('form') && (el.tagName === 'BUTTON' && (!el.getAttribute('type') || el.getAttribute('type') === 'submit'))) return false;
-        if (el.tagName === 'A') {
-          const href = el.getAttribute('href') || '';
-          if (href && !href.startsWith('#')) return false;
-        }
-        return true;
-      };
-      const targets = allElements.filter((el) => {
-        if (!actionable(el)) return false;
-        const own = markerText(el);
-        if (targetAction === 'accept') {
-          return isInsideBanner(el) && resolvedActionType(el) === 'accept'
-            && !regs.reject.test(own) && !regs.preferences.test(own)
-            && !/got it|necessary only|essential only/i.test(own)
-            && /accept|allow|agree|opt.?in|toestaan|accepter|akzept|aceptar|accetta|aceitar/i.test(own);
-        }
-        if (targetAction !== 'settings' || isInsideBanner(el)) return false;
-        const context = [own, ...composedAncestors(el, 2).filter((a) => !a.matches('body, html'))
-          .map((a) => [a.id, typeof a.className === 'string' ? a.className : '', a.getAttribute('aria-label')].join(' '))].join(' ');
-        return regs.settings.test(own) || (
-          /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(context)
-          && /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(context)
-        );
-      });
-      return targets.length === 1 ? targets[0] : targets.length > 1 ? 'ambiguous' : null;
-    }
 
     return {
       title: document.title,
