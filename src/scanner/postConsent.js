@@ -36,10 +36,50 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
     try { const u = new URL(frame.url()); url = (u.origin + u.pathname).slice(0, 180); } catch {}
     return { index: page.frames().indexOf(frame), url };
   };
-  const captureError = (operation, frame, error) => boundedPush(result.diagnostics.errors, {
+  const captureError = (operation, frame, error, extra = {}) => boundedPush(result.diagnostics.errors, {
     stage: result.stage, operation, frame: frameInfo(frame), atMs: elapsed(),
-    name: String(error?.name || 'Error').slice(0, 60)
+    name: String(error?.name || 'Error').slice(0, 60),
+    message: String(error?.message || '').replace(/\s+/g, ' ').slice(0, 300) || null,
+    ...extra
   });
+  const describeTarget = async (target, action) => {
+    try {
+      return await target.element.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        const style = getComputedStyle(el);
+        const centerX = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
+        const centerY = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
+        const top = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(centerX, centerY) : null;
+        return {
+          action,
+          tag: el.tagName.toLowerCase(),
+          id: String(el.id || '').slice(0, 160),
+          cls: String(el.className || '').slice(0, 240),
+          text: String(el.innerText || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 180),
+          ariaLabel: String(el.getAttribute('aria-label') || '').slice(0, 180),
+          role: String(el.getAttribute('role') || '').slice(0, 80),
+          href: String(el.getAttribute('href') || '').slice(0, 240),
+          connected: el.isConnected,
+          disabled: Boolean(el.disabled) || el.getAttribute('aria-disabled') === 'true',
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          pointerEvents: style.pointerEvents,
+          rect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
+          inViewport: rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth,
+          topElement: top ? {
+            tag: top.tagName?.toLowerCase() || '',
+            id: String(top.id || '').slice(0, 120),
+            cls: String(top.className || '').slice(0, 180),
+            sameOrDescendant: top === el || el.contains(top)
+          } : null
+        };
+      });
+    } catch (error) {
+      captureError('describe-' + action, target.frame, error);
+      return null;
+    }
+  };
   const captureSnapshot = (frame, dom) => {
     const candidates = [...(dom.withdrawalDiagnostics?.candidates || [])]
       .sort((a, b) => Number(a.insideBanner) - Number(b.insideBanner));
@@ -100,11 +140,17 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
     return null;
   };
   const click = async (target, field) => {
+    const action = field === 'acceptClicked' ? 'accept' : 'settings';
+    let selectedTarget = null;
     try {
       if (!active()) return false;
-      stage(field === 'acceptClicked' ? 'clicking-accept' : 'clicking-settings');
-      const label = await target.element.evaluate((el) =>
-        String(el.getAttribute('aria-label') || el.innerText || el.id || el.className || '').slice(0, 160));
+      stage(action === 'accept' ? 'clicking-accept' : 'clicking-settings');
+      selectedTarget = await describeTarget(target, action);
+      boundedPush(result.diagnostics.targetSearches, {
+        action, frame: frameInfo(target.frame), atMs: elapsed(),
+        outcome: 'selected-for-click', target: selectedTarget
+      });
+      const label = selectedTarget?.ariaLabel || selectedTarget?.text || selectedTarget?.id || selectedTarget?.cls || '';
       if (!active()) return false;
       await target.element.click({ timeout: Math.min(2000, Math.max(1, budgetMs - (Date.now() - started))), noWaitAfter: true });
       if (!active()) return false;
@@ -112,7 +158,11 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
       result[field + 'Label'] = label;
       return true;
     } catch (error) {
-      captureError('click-' + field, target.frame, error);
+      const afterFailure = await describeTarget(target, action);
+      captureError('click-' + field, target.frame, error, {
+        selectedTarget,
+        targetAfterFailure: afterFailure
+      });
       throw error;
     } finally { await target.element.dispose().catch(() => {}); }
   };
