@@ -9,7 +9,21 @@ function finding(status, title, detected, why, confidence, key, score = null) {
 const passScore = (max) => ({ earned: max, max });
 const concernScore = (max) => ({ earned: 0, max });
 
-export const CORE_AUTOMATED_CHECK_COUNT = 12;
+export const CORE_CHECKS = [
+  ['banner', 'Consent interface'],
+  ['accept', 'Accept control'],
+  ['reject', 'Reject control'],
+  ['preferences', 'Preferences control'],
+  ['settings_entry', 'Consent settings reopening'],
+  ['privacy_policy', 'Privacy Policy'],
+  ['cookie_policy', 'Cookie Policy'],
+  ['cmp', 'CMP technology'],
+  ['preconsent_cookies', 'Pre-interaction analytics/marketing cookies'],
+  ['preconsent_network', 'Pre-interaction tracking collection'],
+  ['storage', 'Pre-interaction browser storage'],
+  ['third_party', 'Pre-interaction third-party requests']
+];
+export const CORE_AUTOMATED_CHECK_COUNT = CORE_CHECKS.length;
 
 export function buildFindings(raw) {
   const findings = [];
