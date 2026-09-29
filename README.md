@@ -74,11 +74,11 @@ High-confidence pre-interaction analytics/marketing cookies and conservative adv
 
 The DOM inspector evaluates visible consent-oriented containers and prefers controls found **inside** those likely banner/dialog elements. It traverses open Shadow DOM roots where available. Generic page buttons such as an unrelated “Manage” button are not treated as consent controls merely because their text matches.
 
-A missing button is normally **Needs manual verification**, not a failed compliance finding, because wording, iframes, closed Shadow DOM, geolocation and custom UI can defeat automated matching. Scanner v1.0.7 does not click consent controls.
+A missing button is normally **Needs manual verification**, not a failed compliance finding, because wording, iframes, closed Shadow DOM, geolocation and custom UI can defeat automated matching. The scanner preserves initial-load evidence, then may click an unambiguous Accept control and a confidently identified settings entry point. It verifies that the initial interface closes and a consent interface reopens; it does not test actual withdrawal or changed tracking behavior.
 
 ### Settings / withdrawal
 
-The scanner only calls a visible control a **cookie/privacy settings entry point** when it appears outside the likely initial consent interface. It does not claim that withdrawal is proven because proving withdrawal requires making a consent choice, reopening settings and retesting behavior.
+The scanner only calls a visible control a **cookie/privacy settings entry point** when it appears outside the likely initial consent interface. A separate post-consent phase can mark the settings check as passed when clicking an entry point reopens a consent interface after Accept. Actual withdrawal is not proven: changing purposes, saving the new choice, and retesting tracking remain outside this check. Ambiguous targets, failed clicks, navigation, and timeouts remain manual verification.
 
 ### CMP detection
 
@@ -148,7 +148,7 @@ This scanner accepts arbitrary public URLs, so URL fetching must be treated as h
 * Each browser request is revalidated before Playwright is allowed to continue it. This also applies to subresources and redirected destinations.
 * The final URL and every main-navigation redirect are validated again.
 * Redirect count is capped.
-* Navigation and total scan timeouts are strict.
+* Navigation/initial-load timeouts remain configured separately. The post-consent interaction phase adds a bounded 12-second budget.
 * Images, fonts and media are blocked to reduce bandwidth/cost while preserving scripts/styles needed for DOM analysis.
 * Total request count is capped.
 * A declared oversized main document causes the scan to abort.
@@ -230,7 +230,7 @@ Memory consumption is dominated by Chromium. Start conservatively, observe real 
 At the proxy/load balancer level:
 
 * Limit request body size.
-* Add a request timeout slightly longer than `SCAN_TIMEOUT_MS` (for example 35 seconds).
+* Allow for the regional initial-load timeout (up to 45 seconds by default), the additional 12-second post-consent budget, and any configured transient retry when setting the upstream request timeout.
 * Add per-IP or edge/WAF rate limiting as a second layer.
 * Do not cache `POST /api/scan`.
 * Serve the site over HTTPS.
