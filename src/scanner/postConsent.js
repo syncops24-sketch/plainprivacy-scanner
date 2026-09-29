@@ -165,7 +165,31 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
       });
       const label = selectedTarget?.ariaLabel || selectedTarget?.text || selectedTarget?.id || selectedTarget?.cls || '';
       if (!active()) return false;
-      await target.element.click({ timeout: Math.min(2000, Math.max(1, budgetMs - (Date.now() - started))), noWaitAfter: true });
+      try {
+        await target.element.click({ timeout: Math.min(2000, Math.max(1, budgetMs - (Date.now() - started))), noWaitAfter: true });
+      } catch (error) {
+        // The target was already selected conservatively and verified visible/actionable.
+        // Some CMP widgets use SVG children/animation layers that make Playwright's
+        // actionability click time out even though the button itself is usable.
+        // Fall back to the element's native click, then rely on the subsequent
+        // state-change verification before treating the interaction as successful.
+        const fallbackTarget = await describeTarget(target, action);
+        const safeFallback = fallbackTarget?.connected &&
+          !fallbackTarget?.disabled &&
+          fallbackTarget?.display !== 'none' &&
+          fallbackTarget?.visibility !== 'hidden' &&
+          Number(fallbackTarget?.opacity ?? 1) > 0 &&
+          fallbackTarget?.pointerEvents !== 'none' &&
+          fallbackTarget?.rect?.width > 0 &&
+          fallbackTarget?.rect?.height > 0;
+        if (!safeFallback) throw error;
+        boundedPush(result.diagnostics.targetSearches, {
+          action, frame: frameInfo(target.frame), atMs: elapsed(),
+          outcome: 'playwright-click-timeout-native-click-fallback',
+          target: fallbackTarget
+        });
+        await target.element.evaluate((el) => el.click());
+      }
       if (!active()) return false;
       result[field] = true;
       result[field + 'Label'] = label;
