@@ -64,9 +64,27 @@ export function buildFindings(raw) {
   else findings.push(finding('manual', 'CMP technology not identified', 'No known CMP signature matched the DOM, scripts, or network requests.', 'The site may use a custom CMP, uncommon vendor, iframe implementation, or no CMP.', 'Medium', 'cmp'));
 
   const named = new Map(trackers.map((t) => [t.id, t]));
+  const compactTrackerEvidence = (id, hit) => {
+    const evidence = [...hit.urlEvidence, ...hit.cookieEvidence].slice(0, 3);
+    if (id !== 'ga4') return evidence.join(' | ');
+
+    return evidence.map((item) => {
+      const value = String(item || '');
+      const measurementId = value.match(/(?:[?&](?:id|tid)=|\b)(G-[A-Z0-9]+)/i)?.[1];
+      if (measurementId) return `Google Analytics 4 (${measurementId})`;
+      if (/analytics\.google\.com\/g\/collect/i.test(value)) return 'GA4 collection request observed (analytics.google.com/g/collect)';
+      try {
+        const url = new URL(value);
+        return `${url.hostname}${url.pathname}`;
+      } catch {
+        return value.length > 120 ? `${value.slice(0, 117)}...` : value;
+      }
+    }).filter((value, index, values) => values.indexOf(value) === index).join(' | ');
+  };
+
   for (const [id, label] of [['gtm','Google Tag Manager'], ['ga4','Google Analytics 4'], ['google_ads','Google Ads tracking'], ['meta_pixel','Meta Pixel']]) {
     const hit = named.get(id);
-    if (hit) findings.push(finding('observation', `${label} detected`, [...hit.urlEvidence, ...hit.cookieEvidence].slice(0,3).join(' | '), 'Detection confirms the technology is present, not that it is incorrectly configured or consent-gated.', 'High', id));
+    if (hit) findings.push(finding('observation', `${label} detected`, compactTrackerEvidence(id, hit), 'Detection confirms the technology is present, not that it is incorrectly configured or consent-gated.', 'High', id));
   }
 
   const otherTrackers = trackers.filter((t) => !['gtm','ga4','google_ads','meta_pixel'].includes(t.id));
