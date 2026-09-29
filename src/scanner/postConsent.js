@@ -115,40 +115,50 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
     }
     return failed ? null : states; // Unknown frame state cannot confirm disappearance.
   };
-  const uniqueTarget = async (action) => {
+  const uniqueTarget = async (action, options = {}) => {
     const handles = [];
-    let failed = false;
-    // Inspect frames concurrently. A slow third-party iframe must not consume the
-    // entire post-consent budget after the main document has already produced a
-    // safe settings target.
+    let ambiguous = false;
     const frames = page.frames();
     const remaining = Math.max(1, budgetMs - elapsed());
-    const perFrameTimeoutMs = Math.min(1500, remaining);
+    // Settings controls are commonly injected after the first banner closes.
+    // Keep each probe cheap so we can poll several times instead of allowing a
+    // slow/ad frame to consume the entire interaction budget.
+    const perFrameTimeoutMs = Math.min(options.fast ? 450 : 1200, remaining);
     const inspections = await Promise.all(frames.map(async (frame) => {
+      let timeoutId;
       try {
-        const handle = await Promise.race([
-          inspect(frame, { targetAction: action }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('target-frame-timeout')), perFrameTimeoutMs))
-        ]);
+        const timeout = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('target-frame-timeout')), perFrameTimeoutMs);
+        });
+        const handle = await Promise.race([inspect(frame, { targetAction: action }), timeout]);
+        clearTimeout(timeoutId);
         const element = handle.asElement();
         if (element) {
           boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: 'unique-in-frame' });
-          return { frame, element, failed: false };
+          return { frame, element, ambiguous: false, timedOut: false };
         }
-        const ambiguous = await handle.jsonValue() === 'ambiguous';
-        boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: ambiguous ? 'ambiguous' : 'no-safe-target' });
+        const isAmbiguous = await handle.jsonValue() === 'ambiguous';
+        boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: isAmbiguous ? 'ambiguous' : 'no-safe-target' });
         await handle.dispose();
-        return { frame, element: null, failed: ambiguous };
+        return { frame, element: null, ambiguous: isAmbiguous, timedOut: false };
       } catch (error) {
-        captureError('target-' + action, frame, error);
-        return { frame, element: null, failed: true };
+        clearTimeout(timeoutId);
+        // A timed-out frame is inconclusive, not evidence that another frame's
+        // unique visible target is unsafe. Other errors remain diagnostic only.
+        const timedOut = String(error?.message || '').includes('target-frame-timeout');
+        boundedPush(result.diagnostics.targetSearches, {
+          action, frame: frameInfo(frame), atMs: elapsed(),
+          outcome: timedOut ? 'frame-timeout-ignored' : 'frame-inspection-error'
+        });
+        if (!timedOut) captureError('target-' + action, frame, error);
+        return { frame, element: null, ambiguous: false, timedOut };
       }
     }));
     for (const item of inspections) {
       if (item.element) handles.push({ frame: item.frame, element: item.element });
-      if (item.failed) failed = true;
+      if (item.ambiguous) ambiguous = true;
     }
-    if (!failed && handles.length === 1 && active()) return handles[0];
+    if (!ambiguous && handles.length === 1 && active()) return handles[0];
     await Promise.all(handles.map(({ element }) => element.dispose().catch(() => {})));
     return null;
   };
@@ -223,12 +233,13 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
     stage('locating-settings');
     let settings;
     let lastCaptureMs = elapsed();
-    while (active() && !(settings = await uniqueTarget('settings'))) {
+    while (active() && !(settings = await uniqueTarget('settings', { fast: true }))) {
       if (active() && elapsed() - lastCaptureMs >= 1500) {
         await inspectFrames();
         lastCaptureMs = elapsed();
       }
-      await pause();
+      // Poll quickly enough to catch controls injected shortly after banner close.
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
     if (!settings || !await click(settings, 'settingsClicked')) return;
     result.reason = 'settings-click-did-not-reopen-interface';
