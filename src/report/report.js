@@ -9,9 +9,17 @@ export function createReport(raw) {
   const coreChecks = CORE_CHECKS.map(([key, label]) => {
     const f = byKey.get(key);
     const assessed = Boolean(f?.score && Number.isFinite(f.score.max));
-    return { key, label, status: assessed ? (f.status === 'concern' ? 'concern' : 'passed') : 'not_assessed',
-      reason: assessed ? null : (f?.detected || 'This check could not be scored automatically.') };
+    return {
+      key,
+      label,
+      status: assessed ? (f.status === 'concern' ? 'concern' : 'passed') : 'manual',
+      title: f?.title || (assessed ? label : `${label} requires manual verification`),
+      detected: f?.detected || 'This core check could not be scored automatically.',
+      why: f?.why || 'A manual technical review is required to classify this check.',
+      confidence: f?.confidence || 'Medium'
+    };
   });
+  const manualCoreChecks = coreChecks.filter((check) => check.status === 'manual');
 
   return {
     version: '1.0.4',
@@ -28,7 +36,7 @@ export function createReport(raw) {
       totalCoreChecks: CORE_AUTOMATED_CHECK_COUNT,
       percent: coveragePercent,
       coreChecks,
-      unassessedChecks: coreChecks.filter((check) => check.status === 'not_assessed')
+      unassessedChecks: manualCoreChecks
     },
     scoreExplanation: scoring.score === null
       ? 'Not enough observable evidence was available to calculate a technical score.'
@@ -38,13 +46,13 @@ export function createReport(raw) {
       passed: detection.findings.filter((f) => f.status === 'passed').length,
       concerns: detection.findings.filter((f) => f.status === 'concern').length,
       observations: detection.findings.filter((f) => f.status === 'observation').length,
-      manual: detection.findings.filter((f) => f.status === 'manual').length
+      manual: manualCoreChecks.length
     },
     findings: {
       passed: detection.findings.filter((f) => f.status === 'passed'),
       concerns: detection.findings.filter((f) => f.status === 'concern'),
       observations: detection.findings.filter((f) => f.status === 'observation'),
-      manual: detection.findings.filter((f) => f.status === 'manual')
+      manual: manualCoreChecks
     },
     technicalEvidence: {
       postConsent: raw.postConsent || null,
