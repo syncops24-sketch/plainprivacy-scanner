@@ -23,7 +23,7 @@ export function createReport(raw) {
     },
     scoreExplanation: scoring.score === null
       ? 'Not enough observable evidence was available to calculate a technical score.'
-      : `Observed checks scored ${scoring.observedScore}/100. The headline score adjusts unassessed coverage toward a neutral baseline, so unknown checks are not treated as passes or failures. This is not a legal compliance score.`,
+      : `Observed checks scored ${scoring.observedScore}/100. Automated coverage was ${scoring.assessedChecks}/${CORE_AUTOMATED_CHECK_COUNT} core checks (${coveragePercent}%). Unassessed checks do not reduce the score and are not treated as passes. This is not a legal compliance score.`,
     disclaimer: 'This scanner performs automated technical checks only. It does not provide legal advice and does not determine compliance with any privacy law.',
     summary: {
       passed: detection.findings.filter((f) => f.status === 'passed').length,
