@@ -67,7 +67,19 @@ async function inspectAllFrames(page) {
     consentmoHostPresent: snapshots.some((item) => item.dom.consentmoHostPresent),
     bodyTextLength: main.bodyTextLength || 0,
     visibleControlCount: snapshots.reduce((sum, item) => sum + (item.dom.visibleControlCount || 0), 0),
-    consentLikeControlTexts: snapshots.flatMap((item) => item.dom.consentLikeControlTexts || []).slice(0, 12)
+    consentLikeControlTexts: snapshots.flatMap((item) => item.dom.consentLikeControlTexts || []).slice(0, 12),
+    frameDiagnostics: snapshots.map((item, index) => ({
+      index,
+      url: String(item.frame.url() || '').slice(0, 500),
+      bodyTextLength: item.dom.bodyTextLength || 0,
+      bannerDetected: Boolean(item.dom.bannerDetected),
+      visibleControlCount: item.dom.visibleControlCount || 0,
+      consentLikeControlTexts: (item.dom.consentLikeControlTexts || []).slice(0, 8),
+      policyLinkCandidates: (item.dom.policyLinkCandidates || []).slice(0, 10),
+      consentControlCandidates: (item.dom.consentControlCandidates || []).slice(0, 12)
+    })).slice(0, 10),
+    policyLinkCandidates: snapshots.flatMap((item) => item.dom.policyLinkCandidates || []).slice(0, 20),
+    consentControlCandidates: snapshots.flatMap((item) => item.dom.consentControlCandidates || []).slice(0, 30)
   };
 }
 
