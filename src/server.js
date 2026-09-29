@@ -144,6 +144,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
       concerns: report.summary?.concerns ?? null,
       scanLocation: raw.scanLocation,
       navigationTimedOut: Boolean(raw.navigationTimedOut),
+      postConsent: raw.postConsent || null,
       domDiagnostics: {
         finalUrl: raw.finalUrl,
         title: raw.title,
