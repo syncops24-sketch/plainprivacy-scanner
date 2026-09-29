@@ -4,6 +4,7 @@ import { assertSafeRequestUrl, validatePublicUrl, UnsafeUrlError } from '../secu
 import { isThirdParty } from '../utils/domain.js';
 import { inspectDom } from '../detectors/dom.js';
 import { createWithdrawalTimeline } from './withdrawalDiagnostics.js';
+import { testPostConsent, freezeInitialEvidence } from './postConsent.js';
 
 let browserPromise;
 async function getBrowser() {
@@ -275,7 +276,7 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
 
     // Freeze report evidence before the diagnostic-only follow-up window.
     // Later requests/DOM changes must not alter initial-load findings.
-    const result = {
+    const result = freezeInitialEvidence({
       requestedUrl: initial.url.toString(),
       finalUrl,
       finalHostname: final.hostname,
@@ -284,22 +285,26 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
       cookies,
       storage,
       runtimeConsent,
-      network: [...network],
+      network,
       networkUrls,
       thirdPartyDomains,
       scripts: [...scripts],
-      blockedRequests: [...blocked],
+      blockedRequests: blocked,
       redirectCount: chain.length - 1,
       navigationTimedOut,
       scannedAt: new Date().toISOString(),
       scanLocation: location === 'us-or' ? env.scanLocation : locationConfig.label
-    };
+    });
     for (let sample = 0; sample < 3 && !scanAbort.signal.aborted; sample += 1) {
       await page.waitForTimeout(750).catch(() => {});
       if (scanAbort.signal.aborted) break;
       await inspectAllFrames(page, withdrawalTimeline).catch(() => withdrawalTimeline.failed());
     }
     dom.withdrawalDiagnostics = withdrawalTimeline.finish();
+    // The initial-load timeout and evidence end here. The interactive phase
+    // has its own bounded budget and cannot add post-choice traffic to result.
+    clearTimeout(scanTimer);
+    result.postConsent = await testPostConsent(page);
     return result;
   } finally {
     clearTimeout(scanTimer);
