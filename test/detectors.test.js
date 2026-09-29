@@ -167,3 +167,21 @@ test('Consentmo is not detected from Cookiebot consentmode query parameters', ()
   });
   assert.equal(cmps.some((cmp) => cmp.name === 'Consentmo'), false);
 });
+
+
+test('multilingual consent vocabulary recognizes common Dutch, German, French and Spanish actions', () => {
+  assert.equal(DOM_REGEX.accept.test('Alles toestaan'), true);
+  assert.equal(DOM_REGEX.accept.test('Alle akzeptieren'), true);
+  assert.equal(DOM_REGEX.reject.test('Tout refuser'), true);
+  assert.equal(DOM_REGEX.reject.test('Rechazar todo'), true);
+  assert.equal(DOM_REGEX.preferences.test('Aanpassen'), true);
+  assert.equal(DOM_REGEX.preferences.test('Paramètres'), true);
+});
+
+test('policy patterns recognize multilingual labels and href-style evidence', () => {
+  assert.equal(DOM_REGEX.privacyPolicy.test('Privacy https://example.test/privacyverklaring/'), true);
+  assert.equal(DOM_REGEX.privacyPolicy.test('Datenschutzerklärung'), true);
+  assert.equal(DOM_REGEX.privacyPolicy.test('Politique de confidentialité'), true);
+  assert.equal(DOM_REGEX.cookiePolicy.test('https://example.test/cookiebeleid/'), true);
+  assert.equal(DOM_REGEX.cookiePolicy.test('Política de cookies'), true);
+});
