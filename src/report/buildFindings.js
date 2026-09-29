@@ -31,10 +31,12 @@ export function buildFindings(raw) {
     else findings.push(finding('manual', `${label} needs manual verification`, 'No matching control was confidently detected inside the consent interface.', 'Wording, region rules, iframes, custom components, or shadow DOM behavior can make automated detection incomplete.', 'Medium', key));
   }
 
-  if (c.settingsEntry) {
-    findings.push(finding('passed', 'Cookie/privacy settings entry point detected', `Visible page control outside the initial banner: “${c.settingsEntry.text}”.`, 'This is evidence of a page-level entry point for privacy preferences. The automated scanner does not click it and therefore does not prove that consent can actually be withdrawn after a prior choice.', 'High', 'settings_entry', passScore(2)));
+  if (raw.postConsent?.reopened === true && raw.postConsent?.status === 'passed') {
+    findings.push(finding('passed', 'Consent interface reopened after consent', `After clicking Accept and observing the initial interface close, the scanner clicked “${raw.postConsent.settingsClickedLabel || 'consent settings'}” and observed a consent interface reopen.`, 'This verifies a working route back to the consent interface. It does not verify withdrawal, saved preference changes, or subsequent tracking behavior.', 'High', 'settings_entry', passScore(2)));
+  } else if (c.settingsEntry) {
+    findings.push(finding('passed', 'Cookie/privacy settings entry point detected', `Visible page control outside the initial banner: “${c.settingsEntry.text}”.`, 'An entry point was detected, but reopening after consent was not verified. This does not prove that consent can actually be withdrawn.', 'High', 'settings_entry', passScore(2)));
   } else {
-    findings.push(finding('manual', 'Consent withdrawal requires manual verification', 'No separate cookie/privacy settings entry point was confidently detected outside the initial consent interface.', 'The control may be injected later, hidden in a widget, appear only after a choice, or use wording the scanner cannot classify safely.', 'Medium', 'settings_entry'));
+    findings.push(finding('manual', 'Consent settings reopening requires manual verification', 'The scan did not verify a working route back to consent settings after a choice.', 'The interface or control may be delayed, ambiguous, inaccessible, or outside the test time budget. This is not evidence that the site lacks a withdrawal mechanism.', 'Medium', 'settings_entry'));
   }
 
   if (raw.dom.policies.privacy) findings.push(finding('passed', 'Privacy Policy link detected', `Link: ${raw.dom.policies.privacy.href}`, 'A visible policy link is a useful documentation signal.', 'High', 'privacy_policy', passScore(1)));
