@@ -294,15 +294,21 @@ export async function inspectDom(page) {
 
     const consentControlCandidates = allElements
       .filter((el) => isVisible(el) && el.matches?.(semanticControlSelector))
-      .map((el) => ({
-        text: ownText(el).slice(0, 180),
-        tag: el.tagName?.toLowerCase() || '',
-        id: el.id || '',
-        role: el.getAttribute?.('role') || '',
-        ariaLabel: el.getAttribute?.('aria-label') || ''
-      }))
-      .filter((item) => /cookie|consent|privacy|accept|allow|agree|reject|deny|decline|preference|setting|custom|toestaan|aanpassen|weigern|ablehnen|akzept/i.test(
-        [item.text, item.id, item.role, item.ariaLabel].join(' ')
+      .map((el) => {
+        const ancestorMarker = composedAncestors(el).slice(0, 2).map((ancestor) => markerText(ancestor)).join(' ');
+        return {
+          text: ownText(el).slice(0, 180),
+          tag: el.tagName?.toLowerCase() || '',
+          id: el.id || '',
+          cls: String(el.className || '').slice(0, 180),
+          role: el.getAttribute?.('role') || '',
+          ariaLabel: el.getAttribute?.('aria-label') || '',
+          title: el.getAttribute?.('title') || '',
+          ancestorMarker: ancestorMarker.slice(0, 300)
+        };
+      })
+      .filter((item) => /cookie|consent|privacy|accept|allow|agree|reject|deny|decline|preference|setting|custom|widget|toestaan|aanpassen|instelling|voorkeur|weigern|ablehnen|akzept|einstellung|param[eè]tre|configuraci[oó]n|impostaz|configura[cç][aã]o/i.test(
+        [item.text, item.id, item.cls, item.role, item.ariaLabel, item.title, item.ancestorMarker].join(' ')
       ))
       .slice(0, 30);
 
@@ -331,16 +337,32 @@ export async function inspectDom(page) {
 
       const structural = allElements
         .filter((el) => isVisible(el) && el.matches?.(semanticControlSelector) && !isInsideBanner(el))
-        .map((el) => ({
-          el,
-          text: ownText(el).slice(0, 500),
-          marker: markerText(el)
-        }))
-        .filter((item) =>
-          /(?:cookie|consent|privacy|gdpr)/i.test(item.marker)
-          && /(?:setting|preference|manage|choice|widget|config|option)/i.test(item.marker)
-        )
-        .sort((a, b) => a.text.length - b.text.length)[0];
+        .map((el) => {
+          const ancestors = composedAncestors(el).slice(0, 3);
+          const nearbyMarker = [markerText(el), ...ancestors.map((ancestor) => markerText(ancestor))]
+            .join(' ')
+            .toLowerCase();
+          return {
+            el,
+            text: ownText(el).slice(0, 500),
+            marker: nearbyMarker
+          };
+        })
+        .filter((item) => {
+          const hasConsentContext = /(?:cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade)/i.test(item.marker);
+          const hasSettingsIntent = /(?:setting|preference|manage|choice|widget|config|option|instelling|voorkeur|einstellung|param[eè]tre|configuraci[oó]n|impostaz|configura[cç][aã]o)/i.test(item.marker);
+          return hasConsentContext && hasSettingsIntent;
+        })
+        .sort((a, b) => {
+          // Prefer controls whose own accessibility/DOM metadata carries the
+          // evidence, then shorter labels. Ancestor context is a fallback.
+          const aOwn = markerText(a.el);
+          const bOwn = markerText(b.el);
+          const aDirect = /(?:cookie|consent|privacy|gdpr)/i.test(aOwn) && /(?:setting|preference|manage|choice|widget|config|option)/i.test(aOwn);
+          const bDirect = /(?:cookie|consent|privacy|gdpr)/i.test(bOwn) && /(?:setting|preference|manage|choice|widget|config|option)/i.test(bOwn);
+          if (aDirect !== bDirect) return aDirect ? -1 : 1;
+          return a.text.length - b.text.length;
+        })[0];
 
       if (!structural) return null;
       return {
