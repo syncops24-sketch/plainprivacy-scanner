@@ -92,7 +92,7 @@ test('late external controls displace banner records when the history is full', 
 
 // Small DOM fixture tests exercise the actual serialized evaluate callback.
 // Layout/computed styles are supplied explicitly; these are not browser E2E tests.
-function fixturePage({ hidden = false, neutral = false } = {}) {
+function fixturePage({ hidden = false, neutral = false, accept = false, duplicate = false } = {}) {
   class Element {
     constructor(tag, attrs = {}, style = {}) {
       this.tagName = tag.toUpperCase(); this.attrs = attrs; this.id = attrs.id || '';
@@ -119,11 +119,22 @@ function fixturePage({ hidden = false, neutral = false } = {}) {
   const host = new Element('div', neutral ? {} : { id: 'privacy-widget' }, { display: hidden ? 'none' : 'block', position: 'fixed' });
   const button = new Element('button', neutral ? { 'aria-controls': 'panel' } : { 'aria-label': 'Open het cookie-instellingen widget' });
   html.append(body); body.append(host); host.append(button);
+  if (accept) {
+    host.id = 'cookie-consent-banner';
+    host.attrs.id = host.id;
+    host.textContent = 'Cookies Accept all Preferences';
+    button.attrs = {};
+    button.textContent = 'Accept all';
+    const other = new Element('button');
+    other.textContent = duplicate ? 'Accept all' : 'Preferences';
+    host.append(other);
+  }
   const document = { documentElement: html, body, title: 'Fixture', baseURI: 'https://example.test/', querySelectorAll: () => [html, ...html.querySelectorAll()] };
   const context = { document, Element, HTMLInputElement: class extends Element {}, ShadowRoot: class {},
     getComputedStyle: (el) => el.style, performance: { timeOrigin: 1000, now: () => 250 },
     innerWidth: 1440, innerHeight: 1000, URL };
-  return { evaluate: (fn, sources) => vm.runInNewContext('(' + fn.toString() + ')(sources)', { ...context, sources }) };
+  const evaluate = (fn, sources) => vm.runInNewContext('(' + fn.toString() + ')(sources)', { ...context, sources });
+  return { evaluate, evaluateHandle: evaluate };
 }
 
 test('DOM logger retains a control hidden by its ancestor with an explicit reason', async () => {
@@ -142,4 +153,17 @@ test('unlabelled fixed controls can enter diagnostics without CMP or language ma
   assert.ok(item.reasons.includes('persistent-icon-control'));
   assert.ok(item.reasons.includes('controls-or-opens-region'));
   assert.equal(dom.controls.settingsEntry, null);
+});
+
+test('interactive settings targeting excludes hidden or semantically unknown icons', async () => {
+  assert.equal(await inspectDom(fixturePage({ hidden: true }), { targetAction: 'settings' }), null);
+  assert.equal(await inspectDom(fixturePage({ neutral: true }), { targetAction: 'settings' }), null);
+  const target = await inspectDom(fixturePage(), { targetAction: 'settings' });
+  assert.equal(target.tagName, 'BUTTON');
+});
+
+test('interactive Accept targeting requires a unique control within the banner', async () => {
+  const target = await inspectDom(fixturePage({ accept: true }), { targetAction: 'accept' });
+  assert.equal(target.textContent, 'Accept all');
+  assert.equal(await inspectDom(fixturePage({ accept: true, duplicate: true }), { targetAction: 'accept' }), 'ambiguous');
 });
