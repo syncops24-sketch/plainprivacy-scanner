@@ -185,3 +185,11 @@ test('policy patterns recognize multilingual labels and href-style evidence', ()
   assert.equal(DOM_REGEX.cookiePolicy.test('https://example.test/cookiebeleid/'), true);
   assert.equal(DOM_REGEX.cookiePolicy.test('Política de cookies'), true);
 });
+
+
+test('does not treat Cookiebot vendor URLs as a Cookie Policy', () => {
+  assert.equal(DOM_REGEX.cookiePolicy.test('https://www.cookiebot.com/en/what-is-behind-powered-by-cookiebot/'), false);
+  assert.equal(DOM_REGEX.cookiePolicy.test('Cookiebot van Usercentrics'), false);
+  assert.equal(DOM_REGEX.cookiePolicy.test('Cookie Policy'), true);
+  assert.equal(DOM_REGEX.cookiePolicy.test('https://example.test/cookiebeleid/'), true);
+});
