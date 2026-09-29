@@ -97,6 +97,64 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
       }))
     });
   };
+  // Lightweight post-click verifier. A withdrawal/settings control may open a
+  // widget/panel that is structurally different from the initial banner, so
+  // verify a newly visible consent-management region instead of requiring the
+  // original banner detector to match.
+  const visibleConsentRegions = async (frame) => {
+    try {
+      return await frame.evaluate(() => {
+        const consentRe = /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i;
+        const settingsRe = /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz|withdraw|intrekken|verander/i;
+        const visible = (el) => {
+          const r = el.getBoundingClientRect();
+          const st = getComputedStyle(el);
+          if (r.width <= 0 || r.height <= 0 || st.display === 'none' || st.visibility === 'hidden' || Number(st.opacity) === 0) return false;
+          for (let p = el.parentElement; p; p = p.parentElement) {
+            const ps = getComputedStyle(p);
+            if (ps.display === 'none' || ps.visibility === 'hidden' || Number(ps.opacity) === 0 || p.getAttribute('aria-hidden') === 'true') return false;
+          }
+          return true;
+        };
+        const nodes = document.querySelectorAll('[role="dialog"], [role="region"], [aria-modal="true"], div, section, aside');
+        const out = [];
+        for (const el of nodes) {
+          if (!visible(el)) continue;
+          const marker = [
+            el.id, typeof el.className === 'string' ? el.className : '',
+            el.getAttribute('aria-label') || '', el.getAttribute('title') || '',
+            String(el.innerText || '').slice(0, 600)
+          ].join(' ');
+          if (!consentRe.test(marker) || !settingsRe.test(marker)) continue;
+          const r = el.getBoundingClientRect();
+          // Ignore tiny launcher controls; we want the management UI they open.
+          if (r.width < 120 || r.height < 80) continue;
+          out.push({
+            tag: el.tagName.toLowerCase(), id: String(el.id || '').slice(0, 120),
+            cls: String(el.className || '').slice(0, 180),
+            role: String(el.getAttribute('role') || '').slice(0, 60),
+            text: String(el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 220),
+            rect: { width: Math.round(r.width), height: Math.round(r.height) }
+          });
+          if (out.length >= 6) break;
+        }
+        return out;
+      });
+    } catch (error) {
+      captureError('visible-consent-regions', frame, error);
+      return [];
+    }
+  };
+  const snapshotVisibleRegions = async () => {
+    const regions = [];
+    for (const frame of page.frames()) {
+      if (!active()) break;
+      const found = await visibleConsentRegions(frame);
+      for (const region of found) regions.push({ frame: frameInfo(frame), ...region });
+    }
+    return regions;
+  };
+
   const pause = () => page.waitForTimeout(400);
   const inspectFrames = async () => {
     const states = [];
@@ -241,17 +299,39 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
       // Poll quickly enough to catch controls injected shortly after banner close.
       await new Promise((resolve) => setTimeout(resolve, 300));
     }
+    const regionsBeforeSettingsClick = await snapshotVisibleRegions();
     if (!settings || !await click(settings, 'settingsClicked')) return;
     result.reason = 'settings-click-did-not-reopen-interface';
     stage('waiting-for-reopen');
+    const beforeKeys = new Set(regionsBeforeSettingsClick.map((r) => [r.frame.index, r.tag, r.id, r.cls, r.role].join('|')));
     while (active()) {
+      if (page.url() !== initialUrl) { result.reason = 'navigation-during-consent-test'; return; }
+
+      // Fast state-transition check first; do not spend the remaining budget on
+      // full scanner diagnostics just to verify the opened management panel.
+      const visibleRegions = await snapshotVisibleRegions();
+      const newlyVisible = visibleRegions.find((r) => !beforeKeys.has([r.frame.index, r.tag, r.id, r.cls, r.role].join('|')));
+      if (newlyVisible) {
+        boundedPush(result.diagnostics.targetSearches, {
+          action: 'verify-reopen', atMs: elapsed(), outcome: 'new-visible-consent-region',
+          target: newlyVisible
+        });
+        result.status = 'passed';
+        result.reason = 'consent-management-interface-opened';
+        result.reopened = true;
+        result.withdrawalVerified = true;
+        stage('completed');
+        return;
+      }
+
+      // Preserve the original banner-based verification as a fallback.
       const states = await inspectFrames();
       if (!active()) return;
-      if (page.url() !== initialUrl) { result.reason = 'navigation-during-consent-test'; return; }
       if (states?.some(({ dom }) => dom.bannerDetected)) {
         result.status = 'passed';
         result.reason = 'consent-interface-reopened';
         result.reopened = true;
+        result.withdrawalVerified = true;
         stage('completed');
         return;
       }
