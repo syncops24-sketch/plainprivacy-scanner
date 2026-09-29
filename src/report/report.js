@@ -1,10 +1,17 @@
-import { buildFindings, CORE_AUTOMATED_CHECK_COUNT } from './buildFindings.js';
+import { buildFindings, CORE_AUTOMATED_CHECK_COUNT, CORE_CHECKS } from './buildFindings.js';
 import { calculateScore, scoreLabel } from './score.js';
 
 export function createReport(raw) {
   const detection = buildFindings(raw);
   const scoring = calculateScore(detection.findings, CORE_AUTOMATED_CHECK_COUNT);
   const coveragePercent = scoring.coveragePercent;
+  const byKey = new Map(detection.findings.map((f) => [f.key, f]));
+  const coreChecks = CORE_CHECKS.map(([key, label]) => {
+    const f = byKey.get(key);
+    const assessed = Boolean(f?.score && Number.isFinite(f.score.max));
+    return { key, label, status: assessed ? (f.status === 'concern' ? 'concern' : 'passed') : 'not_assessed',
+      reason: assessed ? null : (f?.detected || 'This check could not be scored automatically.') };
+  });
 
   return {
     version: '1.0.4',
@@ -19,7 +26,9 @@ export function createReport(raw) {
     scoreCoverage: {
       assessedChecks: scoring.assessedChecks,
       totalCoreChecks: CORE_AUTOMATED_CHECK_COUNT,
-      percent: coveragePercent
+      percent: coveragePercent,
+      coreChecks,
+      unassessedChecks: coreChecks.filter((check) => check.status === 'not_assessed')
     },
     scoreExplanation: scoring.score === null
       ? 'Not enough observable evidence was available to calculate a technical score.'
