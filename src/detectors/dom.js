@@ -273,31 +273,13 @@ export async function inspectDom(page, { targetAction = null } = {}) {
       dedupedCandidates.some((candidate) => composedContains(candidate, el))
       || rootConsentClusters.some((cluster) => cluster.controls.includes(el));
 
-    const controls = uniqueControls.map((el) => ({
-      text: ownText(el).slice(0, 500),
-      id: el.id || '',
-      cls: String(el.className || '').slice(0, 200),
-      href: el.href || '',
-      semantic: el.matches?.('button, a, input, [role="button"], [role="menuitem"]') || false,
-      insideBanner: isInsideBanner(el),
-      action: resolvedActionType(el)
-    }));
-
-    const links = allElements
-      .filter((el) => el.matches?.('a[href]') && isVisible(el))
-      .map((a) => ({ text: ownText(a).slice(0, 500), href: a.href }));
-
-    // Diagnostic-only evidence. Keep this deliberately bounded so logs stay
-    // useful without turning scanner_completed into a DOM dump.
-    // Interactive target lookup is latency-sensitive. Resolve the target before
-    // building the large diagnostics payload below; otherwise CMP-heavy pages can
-    // spend seconds serializing candidates and exhaust the post-consent budget.
+    // Interactive target lookup is latency-sensitive. Do this BEFORE link/control
+    // diagnostics. In target mode we only need one safe element handle.
     if (targetAction) {
       const actionable = (el) => {
         if (!el.matches?.('button, a, input[type="button"], [role="button"]') || !isVisible(el)) return false;
         if (el.disabled || el.getAttribute('aria-disabled') === 'true') return false;
-        if ([el, ...composedAncestors(el)].some((a) => a.hasAttribute('inert') || a.getAttribute('aria-hidden') === 'true'
-          || getComputedStyle(a).display === 'none' || Number(getComputedStyle(a).opacity) === 0)) return false;
+        if (el.hasAttribute('inert') || el.getAttribute('aria-hidden') === 'true') return false;
         if (el.closest?.('form') && (el.tagName === 'BUTTON' && (!el.getAttribute('type') || el.getAttribute('type') === 'submit'))) return false;
         if (el.tagName === 'A') {
           const href = el.getAttribute('href') || '';
@@ -315,15 +297,35 @@ export async function inspectDom(page, { targetAction = null } = {}) {
             && /accept|allow|agree|opt.?in|toestaan|accepter|akzept|aceptar|accetta|aceitar/i.test(own);
         }
         if (targetAction !== 'settings' || isInsideBanner(el)) return false;
+        // Strong direct evidence is preferred: accessible/DOM metadata on the
+        // control itself contains both consent context and settings intent.
+        // This catches icon-only controls without relying on a vendor selector.
+        const directConsent = /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(own);
+        const directSettings = /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(own);
+        if (regs.settings.test(own) || (directConsent && directSettings)) return true;
+        // Bounded two-ancestor fallback for controls whose own metadata is sparse.
         const context = [own, ...composedAncestors(el, 2).filter((a) => !a.matches('body, html'))
           .map((a) => [a.id, typeof a.className === 'string' ? a.className : '', a.getAttribute('aria-label')].join(' '))].join(' ');
-        return regs.settings.test(own) || (
-          /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(context)
-          && /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(context)
-        );
+        return /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(context)
+          && /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(context);
       });
       return targets.length === 1 ? targets[0] : targets.length > 1 ? 'ambiguous' : null;
     }
+
+
+    const controls = uniqueControls.map((el) => ({
+      text: ownText(el).slice(0, 500),
+      id: el.id || '',
+      cls: String(el.className || '').slice(0, 200),
+      href: el.href || '',
+      semantic: el.matches?.('button, a, input, [role="button"], [role="menuitem"]') || false,
+      insideBanner: isInsideBanner(el),
+      action: resolvedActionType(el)
+    }));
+
+    const links = allElements
+      .filter((el) => el.matches?.('a[href]') && isVisible(el))
+      .map((a) => ({ text: ownText(a).slice(0, 500), href: a.href }));
 
     const policyLinkCandidates = links
       .filter((link) => /privacy|cookie|consent|gegevens|datenschutz|confidentialit|privacidad/i.test(link.text + ' ' + link.href))
