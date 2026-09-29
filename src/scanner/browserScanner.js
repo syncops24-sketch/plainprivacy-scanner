@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { assertSafeRequestUrl, validatePublicUrl, UnsafeUrlError } from '../security/urlValidator.js';
 import { isThirdParty } from '../utils/domain.js';
 import { inspectDom } from '../detectors/dom.js';
+import { createWithdrawalTimeline } from './withdrawalDiagnostics.js';
 
 let browserPromise;
 async function getBrowser() {
@@ -29,12 +30,14 @@ export async function closeBrowser() {
   }
 }
 
-async function inspectAllFrames(page) {
+async function inspectAllFrames(page, timeline) {
   const snapshots = [];
   for (const frame of page.frames()) {
     try {
-      snapshots.push({ frame, dom: await inspectDom(frame) });
-    } catch {}
+      const dom = await inspectDom(frame);
+      snapshots.push({ frame, dom });
+      timeline?.record(frame, dom.withdrawalDiagnostics);
+    } catch { timeline?.failed(); }
   }
 
   if (!snapshots.length) return inspectDom(page);
@@ -226,8 +229,9 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
     // asynchronously rendered and iframe-based consent interfaces without clicking them.
     await page.waitForTimeout(1_000).catch(() => {});
     let dom = null;
+    const withdrawalTimeline = createWithdrawalTimeline();
     for (let attempt = 0; attempt < 14; attempt += 1) {
-      dom = await inspectAllFrames(page);
+      dom = await inspectAllFrames(page, withdrawalTimeline);
       if (dom.bannerDetected || dom.controls.accept || dom.controls.reject || dom.controls.preferences) break;
       if (attempt < 13) await page.waitForTimeout(750).catch(() => {});
     }
@@ -269,7 +273,9 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
       })
       .filter(Boolean))].sort();
 
-    return {
+    // Freeze report evidence before the diagnostic-only follow-up window.
+    // Later requests/DOM changes must not alter initial-load findings.
+    const result = {
       requestedUrl: initial.url.toString(),
       finalUrl,
       finalHostname: final.hostname,
@@ -278,16 +284,23 @@ async function scanAttempt(initial, location, locationConfig, proxy) {
       cookies,
       storage,
       runtimeConsent,
-      network,
+      network: [...network],
       networkUrls,
       thirdPartyDomains,
       scripts: [...scripts],
-      blockedRequests: blocked,
+      blockedRequests: [...blocked],
       redirectCount: chain.length - 1,
       navigationTimedOut,
       scannedAt: new Date().toISOString(),
       scanLocation: location === 'us-or' ? env.scanLocation : locationConfig.label
     };
+    for (let sample = 0; sample < 3 && !scanAbort.signal.aborted; sample += 1) {
+      await page.waitForTimeout(750).catch(() => {});
+      if (scanAbort.signal.aborted) break;
+      await inspectAllFrames(page, withdrawalTimeline).catch(() => withdrawalTimeline.failed());
+    }
+    dom.withdrawalDiagnostics = withdrawalTimeline.finish();
+    return result;
   } finally {
     clearTimeout(scanTimer);
     await context.close().catch(() => {});
