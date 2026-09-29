@@ -57,8 +57,15 @@ export async function inspectDom(page, { targetAction = null } = {}) {
     const allElements = [];
     for (let i = 0; i < roots.length; i += 1) {
       const root = roots[i];
-      for (const el of root.querySelectorAll('*')) {
-        allElements.push(el);
+      // Interactive lookup only needs actionable controls and shadow hosts.
+      // Avoid a full querySelectorAll('*') walk on large CMP documents.
+      const selector = targetAction
+        ? 'button, a, input[type="button"], [role="button"], [data-action], [data-testid], *'
+        : '*';
+      for (const el of root.querySelectorAll(selector)) {
+        if (!targetAction || el.matches?.('button, a, input[type="button"], [role="button"], [data-action], [data-testid]') || el.shadowRoot) {
+          allElements.push(el);
+        }
         if (el.shadowRoot) roots.push(el.shadowRoot);
       }
     }
@@ -101,6 +108,27 @@ export async function inspectDom(page, { targetAction = null } = {}) {
         el.getAttribute('data-cy') || ''
       ].join(' ').slice(0, 2500);
     };
+
+    if (targetAction === 'settings') {
+      const directControls = allElements.filter((el) => el.matches?.('button, a, input[type="button"], [role="button"], [data-action], [data-testid]'));
+      const actionable = (el) => {
+        if (!isVisible(el) || el.disabled || el.getAttribute('aria-disabled') === 'true'
+          || el.hasAttribute('inert') || el.getAttribute('aria-hidden') === 'true') return false;
+        if (el.tagName === 'A') {
+          const href = el.getAttribute('href') || '';
+          if (href && !href.startsWith('#')) return false;
+        }
+        return true;
+      };
+      const matches = directControls.filter((el) => {
+        if (!actionable(el)) return false;
+        const own = markerText(el);
+        const consent = /cookie|consent|privacy|gdpr|toestemming|datenschutz|confidentialit|privacidad|privacidade/i.test(own);
+        const settings = /setting|preference|manage|choice|widget|config|instelling|voorkeur|einstellung|param[eè]tre|impostaz/i.test(own);
+        return regs.settings.test(own) || (consent && settings);
+      });
+      return matches.length === 1 ? matches[0] : matches.length > 1 ? 'ambiguous' : null;
+    }
 
     const actionType = (value) => {
       const s = String(value || '').trim();
