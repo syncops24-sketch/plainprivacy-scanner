@@ -154,6 +154,9 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
         consentRootClusterCount: raw.dom.consentRootClusterCount,
         visibleControlCount: raw.dom.visibleControlCount,
         bannerDetected: raw.dom.bannerDetected,
+        frameDiagnostics: raw.dom.frameDiagnostics || [],
+        policyLinkCandidates: raw.dom.policyLinkCandidates || [],
+        consentControlCandidates: raw.dom.consentControlCandidates || [],
         blockedRequestLimit: raw.blockedRequests.filter((item) => item.reason === 'request-limit').length
       }
     });
