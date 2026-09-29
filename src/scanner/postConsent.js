@@ -118,22 +118,35 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
   const uniqueTarget = async (action) => {
     const handles = [];
     let failed = false;
-    for (const frame of page.frames()) {
-      if (!active()) { failed = true; break; }
+    // Inspect frames concurrently. A slow third-party iframe must not consume the
+    // entire post-consent budget after the main document has already produced a
+    // safe settings target.
+    const frames = page.frames();
+    const remaining = Math.max(1, budgetMs - elapsed());
+    const perFrameTimeoutMs = Math.min(1500, remaining);
+    const inspections = await Promise.all(frames.map(async (frame) => {
       try {
-        const handle = await inspect(frame, { targetAction: action });
+        const handle = await Promise.race([
+          inspect(frame, { targetAction: action }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('target-frame-timeout')), perFrameTimeoutMs))
+        ]);
         const element = handle.asElement();
         if (element) {
-          handles.push({ frame, element });
           boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: 'unique-in-frame' });
+          return { frame, element, failed: false };
         }
-        else {
-          const ambiguous = await handle.jsonValue() === 'ambiguous';
-          if (ambiguous) failed = true;
-          boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: ambiguous ? 'ambiguous' : 'no-safe-target' });
-          await handle.dispose();
-        }
-      } catch (error) { failed = true; captureError('target-' + action, frame, error); }
+        const ambiguous = await handle.jsonValue() === 'ambiguous';
+        boundedPush(result.diagnostics.targetSearches, { action, frame: frameInfo(frame), atMs: elapsed(), outcome: ambiguous ? 'ambiguous' : 'no-safe-target' });
+        await handle.dispose();
+        return { frame, element: null, failed: ambiguous };
+      } catch (error) {
+        captureError('target-' + action, frame, error);
+        return { frame, element: null, failed: true };
+      }
+    }));
+    for (const item of inspections) {
+      if (item.element) handles.push({ frame: item.frame, element: item.element });
+      if (item.failed) failed = true;
     }
     if (!failed && handles.length === 1 && active()) return handles[0];
     await Promise.all(handles.map(({ element }) => element.dispose().catch(() => {})));
