@@ -226,7 +226,29 @@ export async function inspectDom(page, { targetAction = null } = {}) {
       const tag = el.tagName?.toLowerCase() || '';
       const customConsentElement = /(?:cookie|consent|cmp|gdpr|privacy)/i.test(tag);
       const dialogLike = /dialog|alertdialog|region/i.test(role);
-      return (explicitMarker && consentText) || (customConsentElement && consentText) || (dialogLike && consentText);
+
+      // Custom banners may have no consent-related IDs/classes/ARIA. Accept an
+      // unmarked region only when several independent signals agree.
+      const regionActions = labelsInside(el);
+      const regionTypes = new Set(regionActions.map((item) => item.type));
+      const complementaryActions = regionTypes.has('accept') && regionTypes.has('reject');
+      const policyLinkInside = allElements.some((candidate) =>
+        candidate !== el
+        && candidate.tagName === 'A'
+        && isVisible(candidate)
+        && composedContains(el, candidate)
+        && (
+          /privacy|cookie/i.test(ownText(candidate))
+          || /privacy|cookie/i.test(candidate.getAttribute?.('href') || '')
+        )
+      );
+      const rect = el.getBoundingClientRect?.();
+      const boundedRegion = rect && rect.width >= 180 && rect.height >= 60
+        && rect.width <= Math.max(window.innerWidth * 1.05, 1200)
+        && rect.height <= Math.max(window.innerHeight * 0.75, 700);
+      const evidenceCluster = consentText && complementaryActions && policyLinkInside && boundedRegion;
+
+      return (explicitMarker && consentText) || (customConsentElement && consentText) || (dialogLike && consentText) || evidenceCluster;
     };
 
     const labelsInside = (region) => uniqueControls
