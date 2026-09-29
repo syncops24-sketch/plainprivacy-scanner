@@ -6,9 +6,11 @@ export function calculateScore(findings, totalCoreChecks = 12) {
   const assessedChecks = scored.length;
   const coverage = totalCoreChecks > 0 ? Math.min(1, assessedChecks / totalCoreChecks) : 0;
 
-  // The headline score reflects only checks the scanner actually assessed.
-  // Coverage is reported separately so unknown checks never behave like partial failures.
-  const score = observedScore;
+  // Headline score combines quality of assessed checks with automated coverage.
+  // Manual/unassessed core checks therefore reduce confidence in the headline
+  // without being treated as failed checks. observedScore remains available
+  // separately to show how the assessed checks performed.
+  const score = observedScore === null ? null : Math.round(observedScore * coverage);
 
   return {
     score,
