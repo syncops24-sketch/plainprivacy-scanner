@@ -44,14 +44,14 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
   });
   const describeTarget = async (target, action) => {
     try {
-      return await target.element.evaluate((el) => {
+      return await target.element.evaluate((el, actionName) => {
         const rect = el.getBoundingClientRect();
         const style = getComputedStyle(el);
         const centerX = Math.max(0, Math.min(innerWidth - 1, rect.left + rect.width / 2));
         const centerY = Math.max(0, Math.min(innerHeight - 1, rect.top + rect.height / 2));
         const top = rect.width > 0 && rect.height > 0 ? document.elementFromPoint(centerX, centerY) : null;
         return {
-          action,
+          action: actionName,
           tag: el.tagName.toLowerCase(),
           id: String(el.id || '').slice(0, 160),
           cls: String(el.className || '').slice(0, 240),
@@ -74,7 +74,7 @@ export async function testPostConsent(page, { inspect = inspectDom, budgetMs = 1
             sameOrDescendant: top === el || el.contains(top)
           } : null
         };
-      });
+      }, action);
     } catch (error) {
       captureError('describe-' + action, target.frame, error);
       return null;
