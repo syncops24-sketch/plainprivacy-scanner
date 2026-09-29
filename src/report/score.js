@@ -6,11 +6,9 @@ export function calculateScore(findings, totalCoreChecks = 12) {
   const assessedChecks = scored.length;
   const coverage = totalCoreChecks > 0 ? Math.min(1, assessedChecks / totalCoreChecks) : 0;
 
-  // Unassessed checks are treated as neutral (50/100), not as passes or failures.
-  // This prevents partial scans from displaying a misleading 100/100 headline score.
-  const score = observedScore === null
-    ? null
-    : Math.round((observedScore * coverage) + (50 * (1 - coverage)));
+  // The headline score reflects only checks the scanner actually assessed.
+  // Coverage is reported separately so unknown checks never behave like partial failures.
+  const score = observedScore;
 
   return {
     score,
