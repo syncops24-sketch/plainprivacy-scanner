@@ -14,7 +14,7 @@ export const DOM_REGEX = {
   preferences: phraseRegex(PREF_WORDS),
   settings: phraseRegex(SETTINGS_WORDS),
   privacyPolicy: /(?:privacy(?:\\s*(?:policy|notice|statement|verklaring))?|privacyverklaring|datenschutz(?:erklärung)?|confidentialit[eé]|politique\\s+de\\s+confidentialit[eé]|privacidad|pol[ií]tica\\s+de\\s+privacidad|informativa\\s+privacy|pol[ií]tica\\s+de\\s+privacidade)/i,
-  cookiePolicy: /(?:cookie(?:s)?(?:\\s*(?:policy|notice|statement|beleid|verklaring))?|cookiebeleid|cookieverklaring|cookie-richtlinie|politique\\s+de\\s+cookies|pol[ií]tica\\s+de\\s+cookies|informativa\\s+cookie)/i,
+  cookiePolicy: /(?:cookie(?:s)?\\s*(?:policy|notice|statement|beleid|verklaring)|cookiebeleid|cookieverklaring|cookie-richtlinie|politique\\s+de\\s+cookies|pol[ií]tica\\s+de\\s+cookies|informativa\\s+cookie)/i,
   bannerText: /(cookie|cookies|consent|privacy choice|tracking preference|toestemming|datenschutz|confidentialit[eé]|privacidad|privacidade)/i,
   bannerMarker: /(cookie|consent|cmp|gdpr|ccpa|privacy|onetrust|optanon|cookiebot|usercentrics|termly|consentmo|didomi|iubenda|complianz|osano|trustarc|quantcast|sourcepoint|cookieyes|cky|csm)/i
 };
@@ -269,7 +269,7 @@ export async function inspectDom(page) {
     );
 
     const isInsideBanner = (el) =>
-      bannerElements.some((banner) => composedContains(banner, el))
+      dedupedCandidates.some((candidate) => composedContains(candidate, el))
       || rootConsentClusters.some((cluster) => cluster.controls.includes(el));
 
     const controls = uniqueControls.map((el) => ({
