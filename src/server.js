@@ -157,6 +157,7 @@ app.post('/api/scan', scanLimiter, async (req, res) => {
         frameDiagnostics: raw.dom.frameDiagnostics || [],
         policyLinkCandidates: raw.dom.policyLinkCandidates || [],
         consentControlCandidates: raw.dom.consentControlCandidates || [],
+        withdrawalDiagnostics: raw.dom.withdrawalDiagnostics || null,
         blockedRequestLimit: raw.blockedRequests.filter((item) => item.reason === 'request-limit').length
       }
     });
