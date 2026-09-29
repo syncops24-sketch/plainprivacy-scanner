@@ -1,7 +1,7 @@
-const ACCEPT_WORDS = ['accept', 'accept all', 'allow all', 'agree', 'allow cookies', 'i agree', 'yes, i agree', 'got it'];
-const REJECT_WORDS = ['reject', 'reject all', 'deny', 'decline', 'refuse', 'essential only', 'necessary only', 'continue without accepting'];
-const PREF_WORDS = ['preferences', 'cookie preferences', 'privacy preferences', 'settings', 'cookie settings', 'manage cookies', 'manage preferences', 'customize', 'customise', 'manage options', 'show purposes'];
-const SETTINGS_WORDS = ['cookie settings', 'privacy settings', 'consent settings', 'manage consent', 'manage cookies', 'privacy choices', 'cookie preferences', 'consent preferences', 'manage preferences'];
+const ACCEPT_WORDS = ['accept', 'accept all', 'allow all', 'agree', 'allow cookies', 'i agree', 'yes, i agree', 'got it', 'alles toestaan', 'accepteren', 'alle akzeptieren', 'akzeptieren', 'tout accepter', 'accepter', 'aceptar todo', 'aceptar', 'accetta tutto', 'accetta', 'aceitar tudo', 'aceitar'];
+const REJECT_WORDS = ['reject', 'reject all', 'deny', 'decline', 'refuse', 'essential only', 'necessary only', 'continue without accepting', 'alles weigeren', 'weigeren', 'alle ablehnen', 'ablehnen', 'tout refuser', 'refuser', 'rechazar todo', 'rechazar', 'rifiuta tutto', 'rifiuta', 'rejeitar tudo', 'rejeitar'];
+const PREF_WORDS = ['preferences', 'cookie preferences', 'privacy preferences', 'settings', 'cookie settings', 'manage cookies', 'manage preferences', 'customize', 'customise', 'manage options', 'show purposes', 'aanpassen', 'voorkeuren', 'instellingen', 'einstellungen', 'anpassen', 'präferenzen', 'paramètres', 'personnaliser', 'préférences', 'configuración', 'personalizar', 'preferencias', 'impostazioni', 'personalizza', 'preferenze', 'configurações', 'personalizar', 'preferências'];
+const SETTINGS_WORDS = ['cookie settings', 'privacy settings', 'consent settings', 'manage consent', 'manage cookies', 'privacy choices', 'cookie preferences', 'consent preferences', 'manage preferences', 'cookie-instellingen', 'cookie instellingen', 'toestemmingsinstellingen', 'cookie-einstellungen', 'datenschutzeinstellungen', 'paramètres des cookies', 'paramètres de confidentialité', 'configuración de cookies', 'configuración de privacidad', 'impostazioni cookie', 'impostazioni privacy', 'configurações de cookies', 'configurações de privacidade'];
 
 function phraseRegex(words) {
   const escaped = words.map((w) => w.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&'));
@@ -13,9 +13,9 @@ export const DOM_REGEX = {
   reject: phraseRegex(REJECT_WORDS),
   preferences: phraseRegex(PREF_WORDS),
   settings: phraseRegex(SETTINGS_WORDS),
-  privacyPolicy: /privacy\s*(policy|notice)/i,
-  cookiePolicy: /cookie\s*(policy|notice|statement)/i,
-  bannerText: /(cookie|cookies|consent|privacy choice|tracking preference)/i,
+  privacyPolicy: /(?:privacy(?:\\s*(?:policy|notice|statement|verklaring))?|privacyverklaring|datenschutz(?:erklärung)?|confidentialit[eé]|politique\\s+de\\s+confidentialit[eé]|privacidad|pol[ií]tica\\s+de\\s+privacidad|informativa\\s+privacy|pol[ií]tica\\s+de\\s+privacidade)/i,
+  cookiePolicy: /(?:cookie(?:s)?(?:\\s*(?:policy|notice|statement|beleid|verklaring))?|cookiebeleid|cookieverklaring|cookie-richtlinie|politique\\s+de\\s+cookies|pol[ií]tica\\s+de\\s+cookies|informativa\\s+cookie)/i,
+  bannerText: /(cookie|cookies|consent|privacy choice|tracking preference|toestemming|datenschutz|confidentialit[eé]|privacidad|privacidade)/i,
   bannerMarker: /(cookie|consent|cmp|gdpr|ccpa|privacy|onetrust|optanon|cookiebot|usercentrics|termly|consentmo|didomi|iubenda|complianz|osano|trustarc|quantcast|sourcepoint|cookieyes|cky|csm)/i
 };
 
@@ -123,15 +123,43 @@ export async function inspectDom(page) {
       '[data-testid]'
     ].join(',');
 
+    // Prefer language-neutral DOM/accessibility metadata when it carries
+    // recognizable consent semantics. Vendor names may contribute context but
+    // are never sufficient on their own.
+    const structuralActionType = (el) => {
+      if (!(el instanceof Element)) return null;
+      const metadata = [
+        el.id || '',
+        typeof el.className === 'string' ? el.className : '',
+        el.getAttribute('name') || '',
+        el.getAttribute('data-action') || '',
+        el.getAttribute('data-testid') || '',
+        el.getAttribute('aria-label') || '',
+        el.getAttribute('title') || ''
+      ].join(' ').toLowerCase();
+      if (/(accept|allow[-_ ]?all|optin|opt-in|agree)/i.test(metadata)) return 'accept';
+      if (/(reject|deny|decline|refuse|optout|opt-out)/i.test(metadata)) return 'reject';
+      if (/(preference|settings|setting|customi[sz]e|manage)/i.test(metadata)) return 'preferences';
+      return null;
+    };
+
+    const resolvedActionType = (el) => actionType(ownText(el)) || structuralActionType(el);
+
+    const consentStructuralMarker = (el) => {
+      const metadata = markerText(el);
+      return regs.bannerMarker.test(metadata)
+        || /(?:cookie|consent|privacy|gdpr|cmp)/i.test(metadata);
+    };
+
     const controlElements = [];
     for (const el of allElements) {
       if (!isVisible(el)) continue;
       const label = ownText(el);
-      const type = actionType(label);
+      const type = actionType(label) || structuralActionType(el);
       if (!type) continue;
 
       const semantic = el.matches?.(semanticControlSelector);
-      const childWithSameAction = [...el.children].some((child) => actionType(ownText(child)));
+      const childWithSameAction = [...el.children].some((child) => resolvedActionType(child));
       const leafish = el.children.length <= 3 && !childWithSameAction && label.length <= 100;
       const controlishMarker = /(button|btn|action|choice|option|preference|accept|reject|decline|allow|deny)/i.test(markerText(el));
 
@@ -146,7 +174,7 @@ export async function inspectDom(page) {
       // links. Only a shadow root is a bounded fallback consent region.
       if (!(root instanceof ShadowRoot)) continue;
       const controlsInRoot = uniqueControls.filter((control) => control.getRootNode?.() === root);
-      const types = new Set(controlsInRoot.map((control) => actionType(ownText(control))).filter(Boolean));
+      const types = new Set(controlsInRoot.map((control) => resolvedActionType(control)).filter(Boolean));
       if (types.size < 2 || (!types.has('accept') && !types.has('reject'))) continue;
 
       const rootText = (root.textContent || '') + ' ' + markerText(root.host);
@@ -174,12 +202,25 @@ export async function inspectDom(page) {
 
     const labelsInside = (region) => uniqueControls
       .filter((control) => composedContains(region, control))
-      .map((control) => ({ el: control, label: ownText(control), type: actionType(ownText(control)) }))
+      .map((control) => ({ el: control, label: ownText(control), type: resolvedActionType(control) }))
       .filter((item) => item.type);
 
     const hasStrongActionCluster = (region) => {
       const types = new Set(labelsInside(region).map((item) => item.type));
-      return types.size >= 2 && (types.has('accept') || types.has('reject'));
+      if (types.size >= 2 && (types.has('accept') || types.has('reject'))) return true;
+
+      // Banner existence should not depend on translating button labels.
+      // A visible consent-marked dialog/region with multiple semantic controls
+      // is enough to detect the interface, while individual actions may remain
+      // manual verification if their meaning cannot be established safely.
+      if (!consentStructuralMarker(region)) return false;
+      const semanticChildren = allElements.filter((el) =>
+        el !== region
+        && isVisible(el)
+        && el.matches?.(semanticControlSelector)
+        && composedContains(region, el)
+      );
+      return semanticChildren.length >= 2;
     };
 
     const candidates = [];
@@ -238,7 +279,7 @@ export async function inspectDom(page) {
       href: el.href || '',
       semantic: el.matches?.('button, a, input, [role="button"], [role="menuitem"]') || false,
       insideBanner: isInsideBanner(el),
-      action: actionType(ownText(el))
+      action: resolvedActionType(el)
     }));
 
     const links = allElements
@@ -284,7 +325,34 @@ export async function inspectDom(page) {
 
     const findBannerControl = (name) => preferredControl((c) => c.insideBanner && c.action === name);
 
-    const findSettingsEntry = () => preferredControl((c) => !c.insideBanner && regs.settings.test(c.text));
+    const findSettingsEntry = () => {
+      const direct = preferredControl((c) => !c.insideBanner && regs.settings.test(c.text));
+      if (direct) return direct;
+
+      const structural = allElements
+        .filter((el) => isVisible(el) && el.matches?.(semanticControlSelector) && !isInsideBanner(el))
+        .map((el) => ({
+          el,
+          text: ownText(el).slice(0, 500),
+          marker: markerText(el)
+        }))
+        .filter((item) =>
+          /(?:cookie|consent|privacy|gdpr)/i.test(item.marker)
+          && /(?:setting|preference|manage|choice|widget|config|option)/i.test(item.marker)
+        )
+        .sort((a, b) => a.text.length - b.text.length)[0];
+
+      if (!structural) return null;
+      return {
+        text: structural.text,
+        id: structural.el.id || '',
+        cls: String(structural.el.className || '').slice(0, 200),
+        href: structural.el.href || '',
+        semantic: true,
+        insideBanner: false,
+        action: 'settings'
+      };
+    };
 
     const policy = (name) => links.find((l) => regs[name].test(l.text + ' ' + l.href));
 
