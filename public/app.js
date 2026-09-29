@@ -66,6 +66,15 @@ function renderReport(report) {
   $('score-label').textContent = report.scoreLabel;
   $('score-explanation').textContent = report.scoreExplanation;
   $('score-coverage').textContent = `Coverage: ${report.scoreCoverage.assessedChecks}/${report.scoreCoverage.totalCoreChecks} core checks assessable (${report.scoreCoverage.percent}%). Unknown checks are not treated as passes.`;
+  const coreChecks = report.scoreCoverage.coreChecks || [];
+  const passedCore = coreChecks.filter((x) => x.status === 'passed');
+  const concernCore = coreChecks.filter((x) => x.status === 'concern');
+  const unknownCore = coreChecks.filter((x) => x.status === 'not_assessed');
+  $('core-check-breakdown').innerHTML = coreChecks.length ? `
+    <div><strong>Passed (${passedCore.length}):</strong> ${escapeHtml(passedCore.map((x) => x.label).join(' · ') || 'None')}</div>
+    <div><strong>Concern (${concernCore.length}):</strong> ${escapeHtml(concernCore.map((x) => x.label).join(' · ') || 'None')}</div>
+    <div><strong>Not assessed (${unknownCore.length}):</strong> ${escapeHtml(unknownCore.map((x) => x.label).join(' · ') || 'None')}</div>
+  ` : '';
   $('scan-location').textContent = `Scan location: ${report.scanLocation}. Regional behavior may differ elsewhere.`;
   $('passed-count').textContent = report.summary.passed;
   $('concern-count').textContent = report.summary.concerns;
