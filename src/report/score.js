@@ -6,11 +6,9 @@ export function calculateScore(findings, totalCoreChecks = 12) {
   const assessedChecks = scored.length;
   const coverage = totalCoreChecks > 0 ? Math.min(1, assessedChecks / totalCoreChecks) : 0;
 
-  // Headline score combines quality of assessed checks with automated coverage.
-  // Manual/unassessed core checks therefore reduce confidence in the headline
-  // without being treated as failed checks. observedScore remains available
-  // separately to show how the assessed checks performed.
-  const score = observedScore === null ? null : Math.round(observedScore * coverage);
+  // Headline score reflects only checks the scanner could actually assess.
+  // Coverage is reported separately so unknown checks never look like failures.
+  const score = observedScore;
 
   return {
     score,
@@ -24,10 +22,9 @@ export function calculateScore(findings, totalCoreChecks = 12) {
 
 export function scoreLabel(score, coveragePercent) {
   if (score === null) return 'Insufficient automated evidence';
-  const suffix = coveragePercent < 80 ? ' · partial automated coverage' : '';
-  if (score >= 85) return `Strong observed signals${suffix}`;
-  if (score >= 70) return `Generally positive observed signals${suffix}`;
-  if (score >= 50) return `Mixed observed signals${suffix}`;
-  if (score >= 30) return `Several implementation concerns${suffix}`;
-  return `Significant technical concerns detected${suffix}`;
+  if (score >= 85) return 'Strong observed signals';
+  if (score >= 70) return 'Generally positive observed signals';
+  if (score >= 50) return 'Mixed observed signals';
+  if (score >= 30) return 'Several implementation concerns';
+  return 'Significant technical concerns detected';
 }
